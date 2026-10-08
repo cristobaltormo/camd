@@ -1,0 +1,11 @@
+.venv/
+.claude/
+.pio/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+server/camd/build.txt
+*.egg-info/
+.env
+firmware/camd-esp32cam.bin
