@@ -7,7 +7,7 @@ phone -> Cloudflare edge -> Access (email one-time PIN, only his address, countr
 
 | Piece | Where |
 |---|---|
-| Access app `habitacion-cam` (`cam.cristobal.cc`, 168 h session) | Cloudflare account `cristobal.cc`, Zero Trust. Policy `solo-cristobal` copies the Proxmox one but with the email only (no `@cristobal.cc` domain rule: the mail catch-all makes that too open) |
+| Access app `habitacion-cam` (`cam.cristobal.cc`, 168 h session) | Cloudflare account `cristobal.cc`, Zero Trust. Policy `solo-cristobal` is the Proxmox one: his Gmail plus the `@cristobal.cc` domain (safe because the only mailboxes there are his and the catch-all goes to `admin@`; revisit if anyone else ever gets a mailbox on that domain) |
 | Tunnel `habitacion-cam` (`a8af63be-...`, remotely managed) | Same account. Ingress `cam.cristobal.cc -> http://127.0.0.1:8180`, then 404 |
 | DNS | Explicit proxied CNAME `cam` to the tunnel; it overrides the wildcard that points at the shared `cristobal.cc` tunnel |
 | `cloudflared` | `/usr/local/bin/cloudflared` in the LXC (copy of the host binary), unit `habitacion-cam-tunnel`, token in `/etc/habitacion-cam/cloudflared.env` (root, 0600), `--no-autoupdate` |
