@@ -5,6 +5,7 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
 from py_vapid import Vapid
+import requests
 from pywebpush import WebPushException, webpush
 
 from .db import Database
@@ -13,8 +14,10 @@ log = logging.getLogger("camd.push")
 
 
 class Push:
-    def __init__(self, db: Database, key_path: Path, subject: str):
+    def __init__(self, db: Database, key_path: Path, subject: str, notifich_url: str = "", notifich_key: str = ""):
         self.db = db
+        self.notifich_url = notifich_url.rstrip("/")
+        self.notifich_key = notifich_key
         self.subject = subject
         self.key_path = key_path
         if not key_path.exists():
@@ -43,12 +46,31 @@ class Push:
     def unsubscribe(self, endpoint: str) -> None:
         self.db.execute("DELETE FROM push_subs WHERE endpoint=?", (endpoint,))
 
+    @property
+    def notifich_enabled(self) -> bool:
+        return bool(self.notifich_url and self.notifich_key)
+
+    def _send_notifich(self, title: str, body: str) -> bool:
+        try:
+            res = requests.post(
+                f"{self.notifich_url}/api/notify",
+                json={"title": title, "body": body},
+                headers={"X-API-Key": self.notifich_key},
+                timeout=10,
+            )
+            if res.ok:
+                return True
+            log.warning("notifich answered %s", res.status_code)
+        except requests.RequestException as exc:
+            log.warning("notifich failed: %s", exc)
+        return False
+
     def count(self) -> int:
         return self.db.one("SELECT COUNT(*) AS n FROM push_subs")["n"]
 
     def send(self, title: str, body: str, url: str = "/", tag: str = "camd") -> int:
         payload = json.dumps({"title": title, "body": body, "url": url, "tag": tag})
-        sent = 0
+        sent = 1 if self.notifich_enabled and self._send_notifich(title, body) else 0
         for row in self.db.query("SELECT endpoint, data FROM push_subs"):
             try:
                 webpush(

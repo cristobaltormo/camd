@@ -30,7 +30,7 @@ class Runtime:
 
         self.presence = Presence(cfg.presence_devices, cfg.presence_grace_s)
         self.arming = Arming(db, self.presence)
-        self.push = Push(db, cfg.vapid_path, cfg.push_subject)
+        self.push = Push(db, cfg.vapid_path, cfg.push_subject, cfg.notifich_url, cfg.notifich_key)
         self.mqtt = Mqtt(cfg, self._external_presence)
         self.detector = MotionDetector(self.load_motion_settings())
         self.recorder = EventRecorder(cfg, db, on_start=self._event_started, on_finish=self._event_finished)
@@ -110,7 +110,7 @@ class Runtime:
         self._last_push = now
         threading.Thread(
             target=self.push.send,
-            args=("Movimiento en la habitacion", time.strftime("%H:%M", time.localtime(start_ts)), f"/#event={event_id}", "motion"),
+            args=("Movimiento en la habitación", "Detectado a las " + time.strftime("%H:%M", time.localtime(start_ts)), f"/#event={event_id}", "motion"),
             daemon=True,
         ).start()
 
@@ -144,5 +144,5 @@ class Runtime:
             return
         if not self._offline_alerted:
             self._offline_alerted = True
-            self.push.send("Camara sin conexion", "No llegan imagenes desde hace 5 minutos", "/", "offline")
+            self.push.send("Cámara sin conexión", "No llegan imágenes desde hace 5 minutos", "/", "offline")
 

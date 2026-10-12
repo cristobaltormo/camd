@@ -204,3 +204,41 @@ def test_security_headers(env):
     assert "script-src 'self'" in r.headers["content-security-policy"]
     assert r.headers["x-frame-options"] == "DENY"
     assert client.get("/api/status").headers["cache-control"] == "no-store"
+
+
+def test_status_reports_storage_and_notifich(env):
+    cfg, db, app, client = env
+    enroll(app, client, SoftAuthenticator("localhost", ORIGIN))
+    body = client.get("/api/status").json()
+    assert body["notifich"] is False
+    assert body["storage"]["events"] == 0 and body["storage"]["cap_bytes"] == int(cfg.max_disk_gb * 1024**3)
+
+
+def test_notifich_channel_counts_as_sent(tmp_path, monkeypatch):
+    from camd import push as push_module
+
+    calls = []
+
+    class Answer:
+        ok = True
+        status_code = 200
+
+    monkeypatch.setattr(push_module.requests, "post", lambda url, **kw: calls.append((url, kw)) or Answer())
+    db = Database(tmp_path / "t.sqlite3")
+    channel = push_module.Push(db, tmp_path / "vapid.pem", "https://localhost", "https://notifich.example/", "secret")
+    assert channel.notifich_enabled
+    assert channel.send("Titulo", "Cuerpo") == 1
+    url, kw = calls[0]
+    assert url == "https://notifich.example/api/notify"
+    assert kw["headers"] == {"X-API-Key": "secret"} and kw["json"] == {"title": "Titulo", "body": "Cuerpo"}
+
+
+def test_notifich_failure_does_not_raise(tmp_path, monkeypatch):
+    from camd import push as push_module
+
+    def boom(*_a, **_k):
+        raise push_module.requests.ConnectionError("down")
+
+    monkeypatch.setattr(push_module.requests, "post", boom)
+    channel = push_module.Push(Database(tmp_path / "t.sqlite3"), tmp_path / "vapid.pem", "https://localhost", "https://x", "k")
+    assert channel.send("a", "b") == 0

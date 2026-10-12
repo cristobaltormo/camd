@@ -1,16 +1,19 @@
 # Outside access through Cloudflare (live since 2026-10-12)
 
 ```
-phone -> Cloudflare edge -> Access (email one-time PIN, only his address, country restriction)
+phone -> Cloudflare edge -> Access (email one-time PIN, only his address)
       -> tunnel "habitacion-cam" (dedicated, runs in LXC 131) -> http://127.0.0.1:8180 -> passkey login
 ```
 
 | Piece | Where |
 |---|---|
-| Access app `habitacion-cam` (`cam.cristobal.cc`, 168 h session) | Cloudflare account `cristobal.cc`, Zero Trust. Policy `solo-cristobal` is the Proxmox one: his Gmail plus the `@cristobal.cc` domain (safe because the only mailboxes there are his and the catch-all goes to `admin@`; revisit if anyone else ever gets a mailbox on that domain) |
+| Access app `habitacion-cam` (`cam.cristobal.cc`, 168 h session) | Cloudflare account `cristobal.cc`, Zero Trust. Policy `solo-cristobal` is the Proxmox one without its Spain-only requirement: his Gmail plus the `@cristobal.cc` domain (safe because the only mailboxes there are his and the catch-all goes to `admin@`; revisit if anyone else ever gets a mailbox on that domain) |
 | Tunnel `habitacion-cam` (`a8af63be-...`, remotely managed) | Same account. Ingress `cam.cristobal.cc -> http://127.0.0.1:8180`, then 404 |
 | DNS | Explicit proxied CNAME `cam` to the tunnel; it overrides the wildcard that points at the shared `cristobal.cc` tunnel |
 | `cloudflared` | `/usr/local/bin/cloudflared` in the LXC (copy of the host binary), unit `habitacion-cam-tunnel`, token in `/etc/habitacion-cam/cloudflared.env` (root, 0600), `--no-autoupdate` |
+
+The country requirement was dropped on 2026-10-12: with iCloud Private Relay on, the iPhone reaches Access through a Cloudflare
+address and Access sends no PIN (the screen still says it did). It is still two gates, PIN to his mailboxes plus passkey.
 
 The shared `cristobal.cc` tunnel was deliberately not touched, so nothing else can break because of the camera.
 

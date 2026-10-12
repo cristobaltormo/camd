@@ -1,5 +1,32 @@
-self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+const CACHE = "cam-shell-v2";
+const SHELL = ["/", "/app.js", "/style.css", "/icon.svg", "/icon-192.png"];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}).then(() => self.skipWaiting()));
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener("fetch", (event) => {
+  const req = event.request;
+  const url = new URL(req.url);
+  if (req.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/")) return;
+  event.respondWith(
+    fetch(req)
+      .then((res) => {
+        if (res.ok && res.type === "basic") {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy));
+        }
+        return res;
+      })
+      .catch(() => caches.match(req).then((hit) => hit || caches.match("/")))
+  );
+});
 
 self.addEventListener("push", (event) => {
   let data = {};
@@ -12,6 +39,7 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(data.title || "Habitación", {
       body: data.body || "",
       tag: data.tag || "camd",
+      renotify: true,
       icon: "/icon-192.png",
       badge: "/icon-192.png",
       data: { url: data.url || "/" },

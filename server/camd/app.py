@@ -201,6 +201,7 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
         armed, reason = rt.arming.decision()
         last = db.one("SELECT id, start_ts, status FROM events ORDER BY start_ts DESC LIMIT 1")
         info = rt.camera_info or {}
+        usage = db.one("SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS bytes FROM events")
         return {
             "armed": armed,
             "reason": reason,
@@ -219,6 +220,8 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
             "recording": rt.recorder.recording,
             "last_event": dict(last) if last else None,
             "push_subscriptions": rt.push.count(),
+            "notifich": rt.push.notifich_enabled,
+            "storage": {"events": usage["n"], "bytes": usage["bytes"], "cap_bytes": int(cfg.max_disk_gb * 1024**3)},
         }
 
     @app.post("/api/mode")
@@ -280,16 +283,16 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
             rows = db.query("SELECT * FROM events WHERE start_ts < ? ORDER BY start_ts DESC LIMIT ?", (before, limit))
         return {"events": [event_json(r) for r in rows]}
 
-    def event_file(event_id: int, column: str, media_type: str) -> FileResponse:
+    def event_file(event_id: int, column: str, media_type: str, filename: str | None = None) -> FileResponse:
         row = db.one("SELECT * FROM events WHERE id=?", (event_id,))
         path = Path(row[column]) if row and row[column] else None
         if path is None or not path.is_file() or cfg.clips_dir.resolve() not in path.resolve().parents:
             raise HTTPException(404, "not found")
-        return FileResponse(path, media_type=media_type, headers={"Cache-Control": "private, max-age=3600"})
+        return FileResponse(path, media_type=media_type, filename=filename, headers={"Cache-Control": "private, max-age=3600"})
 
     @app.get("/api/events/{event_id}/clip")
-    def event_clip(event_id: int, _: int = Depends(session)):
-        return event_file(event_id, "clip_path", "video/mp4")
+    def event_clip(event_id: int, download: bool = False, _: int = Depends(session)):
+        return event_file(event_id, "clip_path", "video/mp4", f"habitacion-{event_id}.mp4" if download else None)
 
     @app.get("/api/events/{event_id}/thumb")
     def event_thumb(event_id: int, _: int = Depends(session)):
@@ -306,11 +309,14 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
     # ---- live ----
 
     @app.get("/api/snapshot")
-    def snapshot(_: int = Depends(session)):
+    def snapshot(download: bool = False, _: int = Depends(session)):
         latest = rt.grabber.latest
         if latest is None:
             raise HTTPException(503, "no frame")
-        return Response(latest[1], media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+        headers = {"Cache-Control": "no-store"}
+        if download:
+            headers["Content-Disposition"] = f'attachment; filename="habitacion-{int(latest[0])}.jpg"'
+        return Response(latest[1], media_type="image/jpeg", headers=headers)
 
     @app.get("/api/live")
     def live(_: int = Depends(session)):
@@ -351,7 +357,7 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
 
     @app.post("/api/push/test")
     def push_test(_: int = Depends(session)):
-        return {"sent": rt.push.send("Prueba", "Las notificaciones funcionan", "/", "test")}
+        return {"sent": rt.push.send("Prueba de avisos", "Las notificaciones de la habitación funcionan", "/", "test")}
 
     @app.get("/sw.js")
     def service_worker():

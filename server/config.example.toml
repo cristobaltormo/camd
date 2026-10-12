@@ -8,6 +8,9 @@ secure_cookies = true
 trust_proxy = true
 push_subject = "https://cam.example.org"
 
+# Optional second channel: Notifich app. The API key goes in /etc/habitacion-cam/env as CAMD_NOTIFICH_KEY, never here.
+notifich_url = ""
+
 # IPs of the phones that mean "I am home"; leave empty to arm manually only.
 presence_devices = []
 presence_grace_s = 300

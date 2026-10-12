@@ -18,6 +18,8 @@ class Config:
     secure_cookies: bool = False
     trust_proxy: bool = False
     push_subject: str = "https://localhost"
+    notifich_url: str = ""
+    notifich_key: str = ""
     mqtt_host: str = "127.0.0.1"
     mqtt_port: int = 1883
     mqtt_topic: str = "habitacion-cam"
@@ -56,4 +58,5 @@ def load(path: str | None = None) -> Config:
             raise ValueError(f"unknown config key: {key}")
         setattr(cfg, key, Path(value) if key == "data_dir" else value)
     cfg.camera_token = os.environ.get("CAMD_CAMERA_TOKEN", cfg.camera_token)
+    cfg.notifich_key = os.environ.get("CAMD_NOTIFICH_KEY", cfg.notifich_key)
     return cfg
