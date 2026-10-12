@@ -6,8 +6,9 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool
 
+from . import prefs
 from .arming import MODES
 from .auth import SESSION_TTL, Auth, AuthError
 from .config import Config
@@ -17,6 +18,7 @@ from .runtime import Runtime
 
 log = logging.getLogger("camd.app")
 WEB_DIR = Path(__file__).parent / "web"
+VERSION = "1.1.0"
 COOKIE = "cam_session"
 MAX_VIEWERS = 4
 
@@ -53,9 +55,31 @@ class PrivacyBody(BaseModel):
 
 
 class SettingsBody(BaseModel):
-    sensitivity: int = Field(ge=1, le=10)
-    ignore_rects: list[list[float]] = Field(default_factory=list, max_length=10)
-    retention_days: int = Field(ge=1, le=90)
+    model_config = {"extra": "forbid"}
+
+    sensitivity: int | None = Field(default=None, ge=1, le=10)
+    ignore_rects: list[list[float]] | None = Field(default=None, max_length=10)
+    retention_days: int | None = Field(default=None, ge=1, le=90)
+    pre_roll_s: float | None = None
+    post_roll_s: float | None = None
+    max_event_s: float | None = None
+    max_disk_gb: float | None = None
+    presence_grace_s: float | None = None
+    push_cooldown_s: float | None = None
+    notify_motion: StrictBool | None = None
+    notify_offline: StrictBool | None = None
+    quiet_enabled: StrictBool | None = None
+    quiet_start: str | None = None
+    quiet_end: str | None = None
+    camera_vflip: StrictBool | None = None
+    camera_hmirror: StrictBool | None = None
+    camera_brightness: int | None = None
+    camera_contrast: int | None = None
+    camera_quality: int | None = None
+
+
+class IdsBody(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=200)
 
 
 class PushBody(BaseModel):
@@ -221,6 +245,7 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
             "last_event": dict(last) if last else None,
             "push_subscriptions": rt.push.count(),
             "notifich": rt.push.notifich_enabled,
+            "version": VERSION,
             "storage": {"events": usage["n"], "bytes": usage["bytes"], "cap_bytes": int(cfg.max_disk_gb * 1024**3)},
         }
 
@@ -246,18 +271,31 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
     @app.get("/api/settings")
     def get_settings(_: int = Depends(session)):
         s = rt.load_motion_settings()
-        return {"sensitivity": s.sensitivity, "ignore_rects": s.ignore_rects, "retention_days": cfg.retention_days}
+        return {
+            "sensitivity": s.sensitivity,
+            "ignore_rects": s.ignore_rects,
+            "retention_days": cfg.retention_days,
+            **prefs.snapshot(cfg),
+        }
 
     @app.post("/api/settings")
     def post_settings(body: SettingsBody, _: int = Depends(session)):
-        rects = []
-        for rect in body.ignore_rects:
+        data = body.model_dump(exclude_none=True)
+        motion = rt.load_motion_settings()
+        sensitivity = data.pop("sensitivity", motion.sensitivity)
+        rects = data.pop("ignore_rects", motion.ignore_rects)
+        retention = data.pop("retention_days", cfg.retention_days)
+        for rect in rects:
             if len(rect) != 4 or any(not 0 <= v <= 1 for v in rect):
                 raise HTTPException(400, "invalid rect")
-            rects.append(rect)
-        rt.save_motion_settings(body.sensitivity, rects)
-        cfg.retention_days = body.retention_days
-        db.set_setting("retention_days", body.retention_days)
+        try:
+            changed = prefs.update(cfg, db, data)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        rt.save_motion_settings(sensitivity, rects)
+        cfg.retention_days = retention
+        db.set_setting("retention_days", retention)
+        rt.apply_prefs(changed)
         return {"ok": True}
 
     # ---- events ----
@@ -297,6 +335,20 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
     @app.get("/api/events/{event_id}/thumb")
     def event_thumb(event_id: int, _: int = Depends(session)):
         return event_file(event_id, "thumb_path", "image/jpeg")
+
+    @app.get("/api/events/count")
+    def count_events(since: float = 0, _: int = Depends(session)):
+        return {"count": db.one("SELECT COUNT(*) AS n FROM events WHERE start_ts > ?", (since,))["n"]}
+
+    @app.post("/api/events/delete")
+    def delete_events(body: IdsBody, _: int = Depends(session)):
+        removed = 0
+        for event_id in body.ids:
+            row = db.one("SELECT id, clip_path, thumb_path FROM events WHERE id=? AND status != 'recording'", (event_id,))
+            if row is not None:
+                remove_event(db, row)
+                removed += 1
+        return {"removed": removed}
 
     @app.delete("/api/events/{event_id}")
     def delete_event(event_id: int, _: int = Depends(session)):

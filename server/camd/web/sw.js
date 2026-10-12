@@ -1,5 +1,5 @@
-const CACHE = "cam-shell-v2";
-const SHELL = ["/", "/app.js", "/style.css", "/icon.svg", "/icon-192.png"];
+const CACHE = "cam-shell-v3";
+const SHELL = ["/", "/style.css", "/theme.js", "/icon.svg", "/icon-192.png", "/js/main.js", "/js/lib.js", "/js/auth.js", "/js/live.js", "/js/events.js", "/js/settings.js"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}).then(() => self.skipWaiting()));
@@ -35,6 +35,7 @@ self.addEventListener("push", (event) => {
   } catch (_) {
     data = { title: "Habitación", body: event.data ? event.data.text() : "" };
   }
+  if (self.navigator && self.navigator.setAppBadge) self.navigator.setAppBadge().catch(() => {});
   event.waitUntil(
     self.registration.showNotification(data.title || "Habitación", {
       body: data.body || "",

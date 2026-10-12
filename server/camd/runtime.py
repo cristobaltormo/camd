@@ -6,6 +6,7 @@ from .arming import Arming
 from .config import Config
 from .db import Database
 from .events import EventRecorder, purge
+from . import prefs
 from .grabber import Grabber
 from .motion import MotionDetector, MotionSettings
 from .mqtt import Mqtt
@@ -27,6 +28,7 @@ class Runtime:
         stored = db.get_setting("retention_days")
         if stored:
             cfg.retention_days = int(stored)
+        prefs.load(cfg, db)
 
         self.presence = Presence(cfg.presence_devices, cfg.presence_grace_s)
         self.arming = Arming(db, self.presence)
@@ -34,7 +36,7 @@ class Runtime:
         self.mqtt = Mqtt(cfg, self._external_presence)
         self.detector = MotionDetector(self.load_motion_settings())
         self.recorder = EventRecorder(cfg, db, on_start=self._event_started, on_finish=self._event_finished)
-        self.grabber = Grabber(cfg.camera_host, cfg.camera_token, self._on_frame)
+        self.grabber = Grabber(cfg.camera_host, cfg.camera_token, self._on_frame, self.apply_camera)
 
         self.motion_now = False
         self._started_at = time.time()
@@ -56,6 +58,25 @@ class Runtime:
     def save_motion_settings(self, sensitivity: int, ignore_rects: list[list[float]]) -> None:
         self.db.set_setting("motion", {"sensitivity": sensitivity, "ignore_rects": ignore_rects})
         self.detector.update_settings(self.load_motion_settings())
+
+    def apply_camera(self) -> dict[str, bool]:
+        if self.grabber.standby:
+            return {}
+        cfg = self.cfg
+        controls = {
+            "vflip": cfg.camera_vflip,
+            "hmirror": cfg.camera_hmirror,
+            "brightness": cfg.camera_brightness,
+            "contrast": cfg.camera_contrast,
+        }
+        if cfg.camera_quality:
+            controls["quality"] = cfg.camera_quality
+        return self.grabber.apply_controls(controls)
+
+    def apply_prefs(self, changed: set[str]) -> None:
+        self.presence.grace_s = self.cfg.presence_grace_s
+        if changed & prefs.CAMERA_KEYS:
+            threading.Thread(target=self.apply_camera, daemon=True, name="apply-camera").start()
 
     def start(self) -> None:
         self.presence.start()
@@ -105,12 +126,14 @@ class Runtime:
     def _event_started(self, event_id: int, start_ts: float) -> None:
         self.mqtt.publish("motion", "ON")
         now = time.time()
+        if not self.cfg.notify_motion or prefs.in_quiet_hours(self.cfg, now):
+            return
         if now - self._last_push < self.cfg.push_cooldown_s:
             return
         self._last_push = now
         threading.Thread(
             target=self.push.send,
-            args=("Movimiento en la habitación", "Detectado a las " + time.strftime("%H:%M", time.localtime(start_ts)), f"/#event={event_id}", "motion"),
+            args=("Movimiento en la habitación", "Detectado a las " + time.strftime("%H:%M", time.localtime(start_ts)), f"/#/events/{event_id}", "motion"),
             daemon=True,
         ).start()
 
@@ -144,5 +167,7 @@ class Runtime:
             return
         if not self._offline_alerted:
             self._offline_alerted = True
+            if not self.cfg.notify_offline:
+                return
             self.push.send("Cámara sin conexión", "No llegan imágenes desde hace 5 minutos", "/", "offline")
 

@@ -12,11 +12,12 @@ FrameCallback = Callable[[float, bytes], None]
 class Grabber(threading.Thread):
     """Single consumer of the camera stream, fanning frames out to the pipeline and live viewers."""
 
-    def __init__(self, host: str, token: str, on_frame: FrameCallback):
+    def __init__(self, host: str, token: str, on_frame: FrameCallback, on_connect: Callable[[], None] | None = None):
         super().__init__(daemon=True, name="grabber")
         self.host = host
         self.token = token
         self.on_frame = on_frame
+        self.on_connect = on_connect or (lambda: None)
         self._halt = threading.Event()
         self._cond = threading.Condition()
         self._latest: tuple[float, bytes] | None = None
@@ -57,6 +58,19 @@ class Grabber(threading.Thread):
             if on:
                 self._latest = None
         return ok
+
+    def apply_controls(self, controls: dict[str, int]) -> dict[str, bool]:
+        results = {}
+        for var, value in controls.items():
+            try:
+                conn = http.client.HTTPConnection(self.host, 80, timeout=10)
+                conn.request("GET", f"/control?var={var}&val={int(value)}", headers=self._headers())
+                results[var] = conn.getresponse().status == 200
+                conn.close()
+            except OSError as exc:
+                log.warning("control %s failed: %s", var, exc)
+                results[var] = False
+        return results
 
     def fetch_status(self) -> dict | None:
         import json
@@ -106,6 +120,7 @@ class Grabber(threading.Thread):
             if resp.status != 200:
                 raise ValueError(f"stream status {resp.status}")
             log.info("stream connected")
+            threading.Thread(target=self.on_connect, daemon=True, name="on-connect").start()
             while not self._halt.is_set() and not self._standby:
                 length = self._read_part_length(resp)
                 data = resp.read(length)

@@ -116,7 +116,8 @@ def test_mode_snooze_settings_status(env):
 
     ok = client.post("/api/settings", json={"sensitivity": 8, "ignore_rects": [[0.1, 0.1, 0.2, 0.2]], "retention_days": 7}, headers=H)
     assert ok.status_code == 200
-    assert client.get("/api/settings").json() == {"sensitivity": 8, "ignore_rects": [[0.1, 0.1, 0.2, 0.2]], "retention_days": 7}
+    got = client.get("/api/settings").json()
+    assert {k: got[k] for k in ("sensitivity", "ignore_rects", "retention_days")} == {"sensitivity": 8, "ignore_rects": [[0.1, 0.1, 0.2, 0.2]], "retention_days": 7}
     bad = client.post("/api/settings", json={"sensitivity": 8, "ignore_rects": [[2, 0, 0, 0]], "retention_days": 7}, headers=H)
     assert bad.status_code == 400
 

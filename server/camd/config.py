@@ -31,6 +31,16 @@ class Config:
     post_roll_s: float = 10.0
     max_event_s: float = 90.0
     push_cooldown_s: float = 60.0
+    notify_motion: bool = True
+    notify_offline: bool = True
+    quiet_enabled: bool = False
+    quiet_start: str = "23:00"
+    quiet_end: str = "07:00"
+    camera_vflip: bool = False
+    camera_hmirror: bool = False
+    camera_brightness: int = 0
+    camera_contrast: int = 0
+    camera_quality: int = 0
 
     @property
     def clips_dir(self) -> Path:
