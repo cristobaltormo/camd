@@ -8,6 +8,13 @@ log = logging.getLogger("camd.grabber")
 
 FrameCallback = Callable[[float, bytes], None]
 
+RETRY_STEPS = (1.0, 2.0, 3.0, 5.0, 10.0, 20.0, 30.0)
+
+
+def retry_delay(failures: int) -> float:
+    """Short retries right after a drop, then one attempt every 30 s while the camera stays away."""
+    return RETRY_STEPS[min(max(failures, 1), len(RETRY_STEPS)) - 1]
+
 
 class Grabber(threading.Thread):
     """Single consumer of the camera stream, fanning frames out to the pipeline and live viewers."""
@@ -24,6 +31,8 @@ class Grabber(threading.Thread):
         self._latest: tuple[float, bytes] | None = None
         self._seq = 0
         self._standby = False
+        self._enabled = True
+        self.failures = 0
         self.viewers = 0
 
     @property
@@ -33,11 +42,23 @@ class Grabber(threading.Thread):
     @property
     def online(self) -> bool:
         latest = self._latest
-        return latest is not None and time.time() - latest[0] < 10
+        return self._enabled and latest is not None and time.time() - latest[0] < 10
 
     @property
     def standby(self) -> bool:
         return self._standby
+
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
+    def set_enabled(self, on: bool) -> None:
+        self._enabled = on
+        if on:
+            self.failures = 0
+            self._kick.set()
+        else:
+            self._latest = None
 
     def stop(self) -> None:
         self._halt.set()
@@ -104,23 +125,21 @@ class Grabber(threading.Thread):
                 yield frame[1]
 
     def run(self) -> None:
-        backoff = 1.0
         while not self._halt.is_set():
-            if self._standby:
+            if self._standby or not self._enabled:
                 self._kick.wait(1)
                 self._kick.clear()
                 continue
             try:
                 self._consume()
-                backoff = 1.0
+                self.failures = 0
             except (OSError, http.client.HTTPException, ValueError) as exc:
-                log.warning("stream error: %s", exc)
-            if self._kick.wait(backoff):
+                self.failures += 1
+                if self.failures in (1, 5) or self.failures % 20 == 0:
+                    log.warning("camera unreachable (%d failures): %s", self.failures, exc)
+            if self._kick.wait(retry_delay(self.failures)):
                 self._kick.clear()
-                backoff = 1.0
-            if self._halt.is_set():
-                return
-            backoff = min(backoff * 2, 3.0)
+                self.failures = 0
 
     def _consume(self) -> None:
         conn = http.client.HTTPConnection(self.host, 81, timeout=6)
@@ -131,7 +150,7 @@ class Grabber(threading.Thread):
                 raise ValueError(f"stream status {resp.status}")
             log.info("stream connected")
             threading.Thread(target=self.on_connect, daemon=True, name="on-connect").start()
-            while not self._halt.is_set() and not self._standby:
+            while not self._halt.is_set() and not self._standby and self._enabled:
                 length = self._read_part_length(resp)
                 data = resp.read(length)
                 if len(data) != length:
@@ -163,6 +182,8 @@ class Grabber(threading.Thread):
         return length
 
     def _publish(self, ts: float, data: bytes) -> None:
+        if not self._enabled or self._standby:
+            return
         with self._cond:
             self._latest = (ts, data)
             self._seq += 1

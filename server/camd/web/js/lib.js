@@ -307,3 +307,9 @@ export function choiceDialog(title, text, choices, remember) {
     document.body.append(overlay);
   });
 }
+
+export function cameraState(cam) {
+  if (cam.enabled === false) return { text: "Desactivada", tone: "warn" };
+  if (cam.standby) return { text: "Apagada (privacidad)", tone: "warn" };
+  return cam.online ? { text: "Conectada", tone: "ok" } : { text: "Sin señal", tone: "bad" };
+}

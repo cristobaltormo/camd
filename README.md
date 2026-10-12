@@ -22,9 +22,10 @@ out to every viewer. The camera is never exposed outside the LAN.
 |---|---|
 | `firmware/` | PlatformIO project for the ESP32-CAM (stream, snapshot, status, control, standby, OTA) |
 | `server/camd/` | The service: grabber, motion, events, arming, presence, auth, push, MQTT, API, `web/` PWA |
-| `server/tests/` | pytest suite plus `smoke.py`, `soak.py`, `diag.py` for the real camera |
+| `server/tests/`, `server/webtests/` | pytest suite (plus `smoke.py`, `soak.py`, `diag.py` for the real camera) and Node tests for the UI helpers |
+| `server/stamp.py` | Stamps every web asset with a content hash on deploy so clients never mix versions |
 | `server/systemd/`, `server/nginx/` | Unit and reverse-proxy config installed on the LXC |
-| `tools/` | Serial helper, temporary live-view page, certificate renewal |
+| `tools/` | Serial helper, certificate renewal, `ui-mock.py` + `ui-e2e.mjs` (browser tests against a fake API), `ui-smoke.mjs` (real instance) |
 
 ## Arming
 
@@ -32,6 +33,13 @@ out to every viewer. The camera is never exposed outside the LAN.
 (his phone, `presence_devices`) answers on the LAN for `presence_grace_s`. A snooze and a privacy switch
 override everything; privacy puts the camera sensor in standby (the firmware deinitialises it), so nothing
 is captured at all.
+
+## Camera unplugged
+
+`camera_enabled` (Settings, Camera) pauses the service's search for the camera: no connection attempts, no
+offline alert, no motion pipeline. With it on but the camera away, the service retries with growing delays up
+to one attempt every 30 s, warns once after 5 minutes and says so when the camera is back. On reconnection the
+image settings are re-applied and a privacy setting made earlier is enforced again.
 
 ## Development
 

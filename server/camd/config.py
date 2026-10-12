@@ -36,6 +36,7 @@ class Config:
     quiet_enabled: bool = False
     quiet_start: str = "23:00"
     quiet_end: str = "07:00"
+    camera_enabled: bool = True
     camera_vflip: bool = False
     camera_hmirror: bool = False
     camera_brightness: int = 0

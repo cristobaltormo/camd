@@ -42,6 +42,7 @@ class Runtime:
 
         self.motion_now = False
         self._started_at = time.time()
+        self._enabled_at = 0.0
         self.camera_info: dict | None = None
         self._decision = (False, "init")
         self._decision_at = 0.0
@@ -77,13 +78,21 @@ class Runtime:
 
     def apply_prefs(self, changed: set[str]) -> None:
         self.presence.grace_s = self.cfg.presence_grace_s
+        if "camera_enabled" in changed:
+            self.grabber.set_enabled(self.cfg.camera_enabled)
+            self._enabled_at = time.time()
+            if not self.cfg.camera_enabled:
+                self.recorder.close_open_event()
+                self.detector.reset()
+                self._offline_alerted = False
         if changed & prefs.CAMERA_KEYS:
             threading.Thread(target=self.apply_camera, daemon=True, name="apply-camera").start()
 
     def start(self) -> None:
         self.presence.start()
         self.mqtt.start()
-        if self.arming.privacy:
+        self.grabber.set_enabled(self.cfg.camera_enabled)
+        if self.arming.privacy and self.cfg.camera_enabled:
             self.grabber.set_standby(True)
         self.grabber.start()
         self._maintenance.start()
@@ -153,8 +162,9 @@ class Runtime:
                 self.mqtt.publish("mode", self.arming.mode)
                 self.mqtt.publish("camera", "online" if self.grabber.online else "offline")
 
-                if int(time.time()) % 30 < 10:
+                if self.cfg.camera_enabled and int(time.time()) % 30 < 10 and (self.grabber.online or self.grabber.standby):
                     self.camera_info = self.grabber.fetch_status()
+                    self._enforce_standby()
 
                 self.recorder.tick()
                 self._check_offline()
@@ -164,16 +174,27 @@ class Runtime:
             except Exception:
                 log.exception("maintenance cycle failed")
 
+    def _enforce_standby(self) -> None:
+        """A power-cycled camera wakes up with its sensor on; honour a privacy setting made before that."""
+        info = self.camera_info
+        if self.grabber.standby and info is not None and not info.get("standby"):
+            log.info("camera woke up while privacy is on, putting it back in standby")
+            self.grabber.set_standby(True)
+
     def _check_offline(self) -> None:
+        if not self.cfg.camera_enabled:
+            self._offline_alerted = False
+            return
         latest = self.grabber.latest
-        silent_for = time.time() - (latest[0] if latest else self._started_at)
+        silent_for = time.time() - max(latest[0] if latest else 0.0, self._started_at, self._enabled_at)
         if self.grabber.standby or silent_for < OFFLINE_ALERT_S:
-            if self.grabber.online:
+            if self.grabber.online and self._offline_alerted:
                 self._offline_alerted = False
+                if self.cfg.notify_offline:
+                    self.push.send("Cámara de vuelta", "Vuelven a llegar imágenes", "/", "offline")
             return
         if not self._offline_alerted:
             self._offline_alerted = True
             if not self.cfg.notify_offline:
                 return
-            self.push.send("Cámara sin conexión", "No llegan imágenes desde hace 5 minutos", "/", "offline")
-
+            self.push.send("Cámara sin conexión", "No llegan imágenes desde hace 5 minutos. Si la has desenchufado, desactívala en Ajustes, Cámara.", "/", "offline")

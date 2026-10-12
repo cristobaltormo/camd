@@ -17,6 +17,7 @@ now = time.time()
 
 STATE = {
     "privacy": False,
+    "enabled": True,
     "wake_at": 0.0,
     "mode": "auto",
     "snooze_until": 0,
@@ -32,14 +33,14 @@ STATE = {
         "sensitivity": 5, "ignore_rects": [[.1, .1, .2, .2]], "retention_days": 14, "pre_roll_s": 3.0, "post_roll_s": 10.0,
         "max_event_s": 90.0, "max_disk_gb": 6.0, "presence_grace_s": 300.0, "push_cooldown_s": 60.0, "notify_motion": True,
         "notify_offline": True, "quiet_enabled": True, "quiet_start": "23:00", "quiet_end": "07:00", "camera_vflip": False,
-        "camera_hmirror": False, "camera_brightness": 0, "camera_contrast": 0, "camera_quality": 0,
+        "camera_enabled": True, "camera_hmirror": False, "camera_brightness": 0, "camera_contrast": 0, "camera_quality": 0,
     },
 }
 NEXT = {"event": 100, "photo": 100}
 
 
 def status():
-    online = not STATE["privacy"] and time.time() >= STATE["wake_at"]
+    online = STATE["enabled"] and not STATE["privacy"] and time.time() >= STATE["wake_at"]
     clip = STATE["clip"]
     if clip["active"] and time.time() >= clip["until"]:
         clip.update(active=False, id=None)
@@ -47,7 +48,7 @@ def status():
     return {
         "version": "mock", "armed": True, "reason": "away", "mode": STATE["mode"], "snooze_until": STATE["snooze_until"],
         "privacy": STATE["privacy"], "presence": {"configured": True, "home": False},
-        "camera": {"online": online, "standby": STATE["privacy"], "rssi": -52, "fw": "0.2.0", "uptime_s": 190000},
+        "camera": {"enabled": STATE["enabled"], "online": online, "standby": STATE["privacy"], "rssi": -52, "fw": "0.2.0", "uptime_s": 190000},
         "motion": False, "recording": clip["active"], "last_event": {"id": last["id"], "start_ts": last["start"], "status": "done"} if last else None,
         "push_subscriptions": 0, "notifich": True,
         "storage": {"events": len(STATE["events"]), "bytes": 612000000, "cap_bytes": 6 * 1024**3, "photos": len(STATE["photos"]), "photo_bytes": 270000},
@@ -78,7 +79,7 @@ class H(BaseHTTPRequestHandler):
             if p == "/api/auth/devices":
                 return self.send({"credentials": [{"id": "a", "name": "iPhone · Safari"}], "sessions": [{"id": 1, "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) Version/27 Mobile Safari/604.1"}], "current_session": 1})
             if p == "/api/push/key": return self.send({"key": "x"})
-            if p == "/api/live" and STATE["privacy"]: return self.send({"detail": "camera in standby"}, code=503)
+            if p == "/api/live" and (STATE["privacy"] or not STATE["enabled"]): return self.send({"detail": "camera in standby"}, code=503)
         if p in ("/api/snapshot", "/api/live") or p.endswith(("/thumb", "/img")): return self.send(ICON, "image/png")
         if p.endswith("/clip"): return self.send(b"", "video/mp4")
         if p == "/": return self.send((WEB / "index.html").read_bytes(), "text/html")
@@ -113,7 +114,11 @@ class H(BaseHTTPRequestHandler):
                 for ev in STATE["events"]:
                     if ev["id"] == eid: ev["keep"] = b["keep"]
                 return self.send({"ok": True, "keep": b["keep"]})
-            if p == "/api/settings": STATE["settings"].update(b); return self.send({"ok": True})
+            if p == "/api/settings":
+                if "camera_enabled" in b:
+                    STATE["enabled"] = b["camera_enabled"]
+                    if b["camera_enabled"]: STATE["wake_at"] = time.time() + 2.0
+                STATE["settings"].update(b); return self.send({"ok": True})
             if p == "/api/push/test": return self.send({"sent": 1})
         self.send({"ok": True})
 

@@ -1,4 +1,4 @@
-import { api, busy, choiceDialog, chip, fmtAgo, fmtDay, fmtTime, h, icon, prefs, saveToDevice, spinner, toast } from "./lib.js?v=fd59e0f40c";
+import { api, busy, choiceDialog, chip, fmtAgo, fmtDay, fmtTime, h, icon, prefs, saveToDevice, spinner, toast } from "./lib.js?v=5fdcb5d04d";
 
 const REASONS = {
   privacy: "Privacidad activa: la cámara está apagada",
@@ -12,6 +12,7 @@ const CLIP_OPTIONS = [[15, "15 s"], [30, "30 s"], [60, "1 min"], [120, "2 min"],
 const POLL_MS = 4000;
 const FAST_POLL_MS = 1000;
 const WAKE_WINDOW_MS = 25000;
+const PLUG_WINDOW_MS = 60000;
 
 const clock = (s) => `${Math.floor(s / 60)}:${String(Math.max(0, Math.floor(s % 60))).padStart(2, "0")}`;
 
@@ -19,6 +20,7 @@ export function mount(el, navigate) {
   let destroyed = false;
   let pending = 0;
   let wakeUntil = 0;
+  let wakeText = "Encendiendo la cámara...";
   let status = null;
   let wasClipping = false;
   const timers = new Set();
@@ -37,12 +39,13 @@ export function mount(el, navigate) {
   let retryTimer = null;
   let watcher = null;
 
-  const showOverlay = (kind, text, action) => {
+  const showOverlay = (kind, text, action, sub) => {
     overlay.hidden = false;
     liveBadge.hidden = true;
     overlay.replaceChildren(
-      kind === "wait" ? spinner() : icon(kind === "standby" ? "eyeOff" : "signal"),
-      h("div", { text }),
+      kind === "wait" ? spinner() : icon(kind === "standby" || kind === "off" ? "eyeOff" : "signal"),
+      h("div", { class: "overlay-title", text }),
+      sub ? h("div", { class: "overlay-sub", text: sub }) : null,
       action ? h("button", { class: "btn", text: action[0], onclick: action[1] }) : null
     );
   };
@@ -57,7 +60,7 @@ export function mount(el, navigate) {
 
   function startStream() {
     if (phase !== "idle" || destroyed || document.hidden) return;
-    if (!status || status.camera.standby || !status.camera.online) return;
+    if (!status || !status.camera.enabled || status.camera.standby || !status.camera.online) return;
     phase = "connecting";
     showOverlay("wait", failures ? "Reconectando..." : "Conectando...");
     img.src = "/api/live?t=" + Date.now();
@@ -186,6 +189,7 @@ export function mount(el, navigate) {
   const snoozeText = h("div", { class: "muted" });
   const snoozeButtons = h("div", { class: "row tight" });
   const privacySwitch = h("input", { type: "checkbox", class: "switch", "aria-label": "Privacidad" });
+  let privacyBusy = false;
   const controls = h("div", { class: "card stack" },
     seg, hint, h("hr"),
     h("div", { class: "row" }, h("div", {}, h("div", { text: "Pausar avisos" }), snoozeText), snoozeButtons),
@@ -193,6 +197,12 @@ export function mount(el, navigate) {
     h("div", { class: "row" }, h("div", {}, h("div", { text: "Privacidad" }), h("div", { class: "muted", text: "Apaga el sensor de la cámara" })), privacySwitch)
   );
   const last = h("div");
+
+  const setCamera = (on) => act(async () => {
+    await api("/api/settings", { method: "POST", body: { camera_enabled: on } });
+    if (on) { wakeUntil = Date.now() + PLUG_WINDOW_MS; wakeText = "Buscando la cámara..."; failures = 0; }
+    toast(on ? "Cámara activada" : "Cámara desactivada: no se graba ni se avisa", on ? "ok" : undefined);
+  });
 
   async function act(fn) {
     pending += 1;
@@ -204,16 +214,17 @@ export function mount(el, navigate) {
   privacySwitch.addEventListener("change", async () => {
     const want = privacySwitch.checked;
     privacySwitch.disabled = true;
+    privacyBusy = true;
     pending += 1;
     try {
       await api("/api/privacy", { method: "POST", body: { on: want } });
-      if (want) { stopStream(); } else { wakeUntil = Date.now() + WAKE_WINDOW_MS; failures = 0; showOverlay("wait", "Encendiendo la cámara..."); }
+      if (want) { stopStream(); } else { wakeUntil = Date.now() + WAKE_WINDOW_MS; wakeText = "Encendiendo la cámara..."; failures = 0; showOverlay("wait", wakeText); }
     } catch (e) {
       privacySwitch.checked = !want;
       toast(e.message, "bad");
     }
     pending -= 1;
-    privacySwitch.disabled = false;
+    privacyBusy = false;
     await refresh().catch(() => {});
   });
 
@@ -229,7 +240,10 @@ export function mount(el, navigate) {
     snoozeButtons.replaceChildren(...(snoozed
       ? [h("button", { class: "btn small", text: "Reanudar", onclick: () => act(() => api("/api/snooze", { method: "POST", body: { minutes: 0 } })) })]
       : [[60, "1 h"], [480, "8 h"]].map(([m, l]) => h("button", { class: "btn small", text: l, onclick: () => act(() => api("/api/snooze", { method: "POST", body: { minutes: m } })) }))));
-    if (!privacySwitch.disabled) privacySwitch.checked = s.privacy;
+    if (!privacyBusy) {
+      privacySwitch.checked = s.privacy;
+      privacySwitch.disabled = !s.camera.enabled;
+    }
   }
 
   // ---------- status loop ----------
@@ -246,15 +260,20 @@ export function mount(el, navigate) {
     if (wasClipping && !clipping) toast("Clip guardado en Eventos", "ok", ["Ver", () => navigate("/events")]);
     wasClipping = clipping;
     drawClip();
-    clipBtn.disabled = !clipping && (s.camera.standby || !s.camera.online);
-    photoBtn.disabled = s.camera.standby || !s.camera.online;
+    const usable = s.camera.enabled && !s.camera.standby && s.camera.online;
+    clipBtn.disabled = !clipping && !usable;
+    photoBtn.disabled = !usable;
 
-    if (s.camera.standby) {
+    if (!s.camera.enabled) {
+      stopStream();
+      showOverlay("off", "Cámara desactivada", ["Activar cámara", () => setCamera(true)], "No se graba ni se avisa. Cuando la enchufes de nuevo, actívala y volverá sola.");
+    } else if (s.camera.standby) {
       stopStream();
       showOverlay("standby", "Cámara apagada por privacidad", ["Encender", () => { privacySwitch.checked = false; privacySwitch.dispatchEvent(new Event("change")); }]);
     } else if (!s.camera.online) {
       stopStream();
-      showOverlay(Date.now() < wakeUntil ? "wait" : "signal", Date.now() < wakeUntil ? "Encendiendo la cámara..." : "Cámara sin señal");
+      if (Date.now() < wakeUntil) showOverlay("wait", wakeText, null, "Puede tardar medio minuto si acaba de encenderse o enchufarse.");
+      else showOverlay("signal", "Cámara sin señal", ["Desactivar cámara", () => setCamera(false)], "Sigo buscándola cada pocos segundos y volverá sola. Si la has desenchufado, desactívala para que no avise.");
     } else {
       wakeUntil = 0;
       startStream();
@@ -303,6 +322,14 @@ export function mount(el, navigate) {
 }
 
 function renderHero(hero, s) {
+  if (!s.camera.enabled) {
+    hero.className = "card hero off";
+    hero.replaceChildren(
+      h("div", { class: "hero-main" }, icon("eyeOff", "hero-ico"), h("div", {}, h("div", { class: "hero-title", text: "Cámara desactivada" }), h("div", { class: "muted", text: "No se graba ni se avisa hasta que la actives" }))),
+      h("div", { class: "chips" }, chip("Desactivada", "warn"))
+    );
+    return;
+  }
   const ok = s.armed;
   hero.className = "card hero " + (ok ? "on" : "off");
   const camTone = s.camera.standby ? "warn" : s.camera.online ? "ok" : "bad";

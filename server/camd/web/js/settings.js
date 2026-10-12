@@ -1,4 +1,4 @@
-import { api, b64uToBuf, chip, confirmDialog, deviceLabel, fmtBytes, fmtUptime, h, icon, isIOS, isStandalone, prefs, toast } from "./lib.js?v=fd59e0f40c";
+import { api, b64uToBuf, cameraState, chip, confirmDialog, deviceLabel, fmtBytes, fmtUptime, h, icon, isIOS, isStandalone, prefs, toast } from "./lib.js?v=5fdcb5d04d";
 
 const SECTIONS = [
   ["alerts", "Avisos", "bell"],
@@ -232,7 +232,26 @@ export function mount(el, navigate, ctx) {
     window.addEventListener("cam:camera-changed", refresh);
     st.cleanupSection = () => window.removeEventListener("cam:camera-changed", refresh);
     const cam = st.status.camera;
+    const power = h("input", { type: "checkbox", class: "switch", "aria-label": "Cámara en uso", checked: cam.enabled, onchange: async (e) => {
+      const on = e.target.checked;
+      e.target.disabled = true;
+      try {
+        await api("/api/settings", { method: "POST", body: { camera_enabled: on } });
+        st.server.camera_enabled = on;
+        st.draft.camera_enabled = on;
+        st.status = await api("/api/status");
+        toast(on ? "Cámara activada: la buscaré en cuanto esté enchufada" : "Cámara desactivada: no se graba ni se avisa", on ? "ok" : undefined);
+        refreshBar();
+        drawSection();
+      } catch (err) {
+        e.target.checked = !on;
+        e.target.disabled = false;
+        toast(err.message, "bad");
+      }
+    } });
     return [
+      card("Estado",
+        setting("Cámara en uso", "Desactívala antes de desenchufarla: la app deja de buscarla, no avisa y no gasta recursos. Al activarla, todo vuelve solo.", power)),
       card("Vista previa",
         h("div", { class: "preview" }, img),
         h("div", { class: "row end" }, h("button", { class: "btn small", onclick: refresh }, icon("refresh"), "Actualizar")),
@@ -244,10 +263,10 @@ export function mount(el, navigate, ctx) {
         slider("camera_contrast", "Contraste", null, -2, 2, signed),
         select("camera_quality", "Calidad de imagen", "Más calidad pesa más: con wifi flojo puede ir a saltos")),
       card("Dispositivo",
-        kv("Estado", cam.standby ? "Apagada (privacidad)" : cam.online ? "Conectada" : "Sin señal"),
-        kv("Señal wifi", cam.rssi ? `${cam.rssi} dBm` : "-"),
+        kv("Estado", cameraState(cam).text),
+        kv("Señal wifi", cam.online && cam.rssi ? `${cam.rssi} dBm` : "-"),
         kv("Firmware", cam.fw || "-"),
-        kv("Encendida desde hace", fmtUptime(cam.uptime_s))),
+        kv("Encendida desde hace", cam.online ? fmtUptime(cam.uptime_s) : "-")),
     ];
   }
 
@@ -309,10 +328,10 @@ export function mount(el, navigate, ctx) {
         kv("Avisos Notifich", s.notifich ? "Activos" : "Inactivos"),
         kv("Dispositivos web suscritos", String(s.push_subscriptions))),
       card("Cámara",
-        kv("Estado", cam.standby ? "Apagada" : cam.online ? "Conectada" : "Sin señal"),
-        kv("Señal wifi", cam.rssi ? `${cam.rssi} dBm` : "-"),
+        kv("Estado", cameraState(cam).text),
+        kv("Señal wifi", cam.online && cam.rssi ? `${cam.rssi} dBm` : "-"),
         kv("Firmware", cam.fw || "-"),
-        kv("Encendida desde hace", fmtUptime(cam.uptime_s))),
+        kv("Encendida desde hace", cam.online ? fmtUptime(cam.uptime_s) : "-")),
       card("Almacenamiento", storageBlock()),
     ];
   }

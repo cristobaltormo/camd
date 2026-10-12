@@ -1,5 +1,5 @@
-const CACHE = "cam-shell-fd59e0f40c";
-const SHELL = ["/", "/style.css?v=fd59e0f40c", "/theme.js?v=fd59e0f40c", "/icon.svg", "/icon-192.png", "/js/main.js?v=fd59e0f40c", "/js/lib.js", "/js/auth.js", "/js/live.js", "/js/events.js", "/js/photos.js", "/js/settings.js"];
+const CACHE = "cam-shell-5fdcb5d04d";
+const SHELL = ["/", "/style.css?v=5fdcb5d04d", "/theme.js?v=5fdcb5d04d", "/icon.svg", "/icon-192.png", "/js/main.js?v=5fdcb5d04d", "/js/lib.js", "/js/auth.js", "/js/live.js", "/js/events.js", "/js/photos.js", "/js/settings.js"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}).then(() => self.skipWaiting()));

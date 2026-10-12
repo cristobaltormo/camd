@@ -1,15 +1,15 @@
-import { api, h, icon, isOffline, LoginRequired, on, spinner, store, toast } from "./lib.js?v=fd59e0f40c";
-import { authScreen, offlineScreen } from "./auth.js?v=fd59e0f40c";
+import { api, h, icon, isOffline, LoginRequired, on, spinner, store, toast } from "./lib.js?v=5fdcb5d04d";
+import { authScreen, offlineScreen } from "./auth.js?v=5fdcb5d04d";
 
-export const BUILD = "fd59e0f40c";
+export const BUILD = "5fdcb5d04d";
 
 const root = document.getElementById("app");
 
 const VIEWS = {
-  live: { label: "En vivo", load: () => import("./live.js?v=fd59e0f40c") },
-  events: { label: "Eventos", load: () => import("./events.js?v=fd59e0f40c") },
-  photos: { label: "Fotos", load: () => import("./photos.js?v=fd59e0f40c") },
-  settings: { label: "Ajustes", load: () => import("./settings.js?v=fd59e0f40c") },
+  live: { label: "En vivo", load: () => import("./live.js?v=5fdcb5d04d") },
+  events: { label: "Eventos", load: () => import("./events.js?v=5fdcb5d04d") },
+  photos: { label: "Fotos", load: () => import("./photos.js?v=5fdcb5d04d") },
+  settings: { label: "Ajustes", load: () => import("./settings.js?v=5fdcb5d04d") },
 };
 
 const install = { event: null, available: () => !!install.event, async run() {
@@ -147,10 +147,11 @@ function buildShell() {
       document.title = `${VIEWS[name].label} · Habitación`;
     },
     setStatus(s) {
-      const tone = !s.camera.online && !s.camera.standby ? "bad" : s.camera.standby ? "warn" : s.armed ? "ok" : "";
+      const off = !s.camera.enabled;
+      const tone = off || s.camera.standby ? "warn" : !s.camera.online ? "bad" : s.armed ? "ok" : "";
       statusDot.className = "dot " + tone;
-      statusText.textContent = s.camera.standby ? "Cámara apagada" : !s.camera.online ? "Cámara sin señal" : s.armed ? "Vigilando" : "No vigila";
-      statusSub.textContent = s.camera.rssi ? `${s.camera.rssi} dBm` : "";
+      statusText.textContent = off ? "Cámara desactivada" : s.camera.standby ? "Cámara apagada" : !s.camera.online ? "Cámara sin señal" : s.armed ? "Vigilando" : "No vigila";
+      statusSub.textContent = s.camera.rssi && s.camera.online ? `${s.camera.rssi} dBm` : "";
     },
     setBadge(n) {
       document.querySelectorAll('[data-page="events"] .badge-count').forEach((b) => { b.hidden = !n; b.textContent = n > 99 ? "99+" : String(n); });

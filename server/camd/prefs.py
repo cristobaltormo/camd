@@ -28,6 +28,7 @@ SPEC: dict[str, Pref] = {
     "quiet_enabled": Pref(bool),
     "quiet_start": Pref(str),
     "quiet_end": Pref(str),
+    "camera_enabled": Pref(bool),
     "camera_vflip": Pref(bool),
     "camera_hmirror": Pref(bool),
     "camera_brightness": Pref(int, -2, 2),

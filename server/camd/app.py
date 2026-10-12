@@ -76,6 +76,7 @@ class SettingsBody(BaseModel):
     quiet_enabled: StrictBool | None = None
     quiet_start: str | None = None
     quiet_end: str | None = None
+    camera_enabled: StrictBool | None = None
     camera_vflip: StrictBool | None = None
     camera_hmirror: StrictBool | None = None
     camera_brightness: int | None = None
@@ -248,6 +249,7 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
             "privacy": rt.arming.privacy,
             "presence": {"configured": rt.presence.configured, "home": rt.presence.is_home},
             "camera": {
+                "enabled": cfg.camera_enabled,
                 "online": rt.grabber.online,
                 "standby": rt.grabber.standby,
                 "rssi": info.get("rssi"),
@@ -286,6 +288,8 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
 
     @app.post("/api/privacy")
     def privacy(body: PrivacyBody, _: int = Depends(session)):
+        if not cfg.camera_enabled:
+            raise HTTPException(409, "camera not available")
         if not rt.set_privacy(body.on):
             raise HTTPException(502, "camera did not answer")
         return {"ok": True}
@@ -385,7 +389,7 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
     # ---- live ----
 
     def fresh_frame() -> tuple[float, bytes]:
-        latest = rt.grabber.latest
+        latest = rt.grabber.latest if cfg.camera_enabled else None
         if latest is None or not rt.grabber.online:
             raise HTTPException(503, "no frame")
         return latest
@@ -402,7 +406,7 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
 
     @app.get("/api/live")
     def live(_: int = Depends(session)):
-        if rt.grabber.standby:
+        if rt.grabber.standby or not cfg.camera_enabled:
             raise HTTPException(503, "camera in standby")
         cancel = pool.join()
 
@@ -427,7 +431,7 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
 
     @app.post("/api/clips/start")
     def clip_start(body: ClipBody, _: int = Depends(session)):
-        if rt.grabber.standby or not rt.grabber.online:
+        if not cfg.camera_enabled or rt.grabber.standby or not rt.grabber.online:
             raise HTTPException(409, "camera not available")
         rt.recorder.start_manual(body.seconds)
         return rt.recorder.manual_state()

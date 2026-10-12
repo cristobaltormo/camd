@@ -84,6 +84,15 @@ const tests = {
     if (server) { await click('input[aria-label="Privacidad"]'); await sleep(500); }
     await waitFor("document.querySelector('.badge.live') && !document.querySelector('.badge.live').hidden", "stream back", 15000);
   },
+  async "disconnecting the camera shows a calm state and reconnecting resumes"() {
+    await clickText(".overlay .btn", "x").catch(() => {});
+    await js("fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ camera_enabled: false }) })");
+    await waitFor("document.querySelector('.overlay')?.textContent.includes('Cámara desactivada')", "disabled overlay", 8000);
+    if (!(await js("document.querySelector('input[aria-label=\"Privacidad\"]').disabled && [...document.querySelectorAll('.btn.action')].every((b) => b.disabled)"))) throw new Error("controls still enabled");
+    await clickText(".overlay .btn", "Activar cámara");
+    await waitFor("document.querySelector('.overlay')?.textContent.includes('Buscando la cámara')", "searching", 5000);
+    await waitFor("document.querySelector('.badge.live') && !document.querySelector('.badge.live').hidden", "stream back", 20000);
+  },
   async "manual clip starts and stops"() {
     await clickText(".btn.action", "Clip");
     await waitFor("[...document.querySelectorAll('.btn.action')].some((b) => b.textContent.includes('Parar'))", "stop label");
