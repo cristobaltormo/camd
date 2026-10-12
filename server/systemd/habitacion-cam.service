@@ -1,0 +1,33 @@
+[Unit]
+Description=Habitacion camera service
+After=network-online.target mosquitto.service
+Wants=network-online.target
+
+[Service]
+User=camd
+Group=camd
+EnvironmentFile=/etc/habitacion-cam/env
+Environment=PYTHONPATH=/opt/habitacion-cam/app PYTHONUNBUFFERED=1
+WorkingDirectory=/opt/habitacion-cam/app
+ExecStart=/opt/habitacion-cam/venv/bin/python -m camd
+Restart=always
+RestartSec=3
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+ReadWritePaths=/var/lib/habitacion-cam
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

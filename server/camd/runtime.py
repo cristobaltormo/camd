@@ -1,0 +1,148 @@
+import logging
+import threading
+import time
+
+from .arming import Arming
+from .config import Config
+from .db import Database
+from .events import EventRecorder, purge
+from .grabber import Grabber
+from .motion import MotionDetector, MotionSettings
+from .mqtt import Mqtt
+from .presence import Presence
+from .push import Push
+
+log = logging.getLogger("camd.runtime")
+
+OFFLINE_ALERT_S = 300
+DECISION_CACHE_S = 1.0
+
+
+class Runtime:
+    """Owns every long-lived component and the per-frame pipeline."""
+
+    def __init__(self, cfg: Config, db: Database):
+        self.cfg = cfg
+        self.db = db
+        stored = db.get_setting("retention_days")
+        if stored:
+            cfg.retention_days = int(stored)
+
+        self.presence = Presence(cfg.presence_devices, cfg.presence_grace_s)
+        self.arming = Arming(db, self.presence)
+        self.push = Push(db, cfg.vapid_path, cfg.push_subject)
+        self.mqtt = Mqtt(cfg, self._external_presence)
+        self.detector = MotionDetector(self.load_motion_settings())
+        self.recorder = EventRecorder(cfg, db, on_start=self._event_started, on_finish=self._event_finished)
+        self.grabber = Grabber(cfg.camera_host, cfg.camera_token, self._on_frame)
+
+        self.motion_now = False
+        self._started_at = time.time()
+        self.camera_info: dict | None = None
+        self._decision = (False, "init")
+        self._decision_at = 0.0
+        self._last_push = 0.0
+        self._offline_alerted = False
+        self._halt = threading.Event()
+        self._maintenance = threading.Thread(target=self._maintain, daemon=True, name="maintenance")
+
+    def load_motion_settings(self) -> MotionSettings:
+        raw = self.db.get_setting("motion", {})
+        return MotionSettings(
+            sensitivity=int(raw.get("sensitivity", 5)),
+            ignore_rects=[list(map(float, r)) for r in raw.get("ignore_rects", [])],
+        )
+
+    def save_motion_settings(self, sensitivity: int, ignore_rects: list[list[float]]) -> None:
+        self.db.set_setting("motion", {"sensitivity": sensitivity, "ignore_rects": ignore_rects})
+        self.detector.update_settings(self.load_motion_settings())
+
+    def start(self) -> None:
+        self.presence.start()
+        self.mqtt.start()
+        if self.arming.privacy:
+            self.grabber.set_standby(True)
+        self.grabber.start()
+        self._maintenance.start()
+
+    def stop(self) -> None:
+        self._halt.set()
+        self.grabber.stop()
+        self.presence.stop()
+        self.recorder.close_open_event()
+        self.recorder.flush()
+        self.mqtt.stop()
+
+    def set_privacy(self, on: bool) -> bool:
+        if not self.grabber.set_standby(on):
+            return False
+        self.arming.set_privacy(on)
+        if on:
+            self.recorder.close_open_event()
+            self.detector.reset()
+        return True
+
+    def _external_presence(self, home: bool | None) -> None:
+        self.presence.external = home
+        if home:
+            self.presence.mark_seen()
+
+    def _armed(self) -> bool:
+        now = time.time()
+        if now - self._decision_at > DECISION_CACHE_S:
+            self._decision = self.arming.decision()
+            self._decision_at = now
+        return self._decision[0]
+
+    def _on_frame(self, ts: float, jpeg: bytes) -> None:
+        try:
+            result = self.detector.process(jpeg)
+            self.motion_now = result.motion
+            self.recorder.feed(ts, jpeg, result.motion, result.score, self._armed())
+        except Exception:
+            log.exception("frame pipeline error")
+
+    def _event_started(self, event_id: int, start_ts: float) -> None:
+        self.mqtt.publish("motion", "ON")
+        now = time.time()
+        if now - self._last_push < self.cfg.push_cooldown_s:
+            return
+        self._last_push = now
+        threading.Thread(
+            target=self.push.send,
+            args=("Movimiento en la habitacion", time.strftime("%H:%M", time.localtime(start_ts)), f"/#event={event_id}", "motion"),
+            daemon=True,
+        ).start()
+
+    def _event_finished(self, _event_id: int) -> None:
+        if not self.recorder.recording:
+            self.mqtt.publish("motion", "OFF")
+        purge(self.cfg, self.db)
+
+    def _maintain(self) -> None:
+        last_purge = 0.0
+        while not self._halt.wait(10):
+            armed, reason = self.arming.decision()
+            self.mqtt.publish("armed", "ON" if armed else "OFF")
+            self.mqtt.publish("mode", self.arming.mode)
+            self.mqtt.publish("camera", "online" if self.grabber.online else "offline")
+
+            if int(time.time()) % 30 < 10:
+                self.camera_info = self.grabber.fetch_status()
+
+            self._check_offline()
+            if time.time() - last_purge > 3600:
+                purge(self.cfg, self.db)
+                last_purge = time.time()
+
+    def _check_offline(self) -> None:
+        latest = self.grabber.latest
+        silent_for = time.time() - (latest[0] if latest else self._started_at)
+        if self.grabber.standby or silent_for < OFFLINE_ALERT_S:
+            if self.grabber.online:
+                self._offline_alerted = False
+            return
+        if not self._offline_alerted:
+            self._offline_alerted = True
+            self.push.send("Camara sin conexion", "No llegan imagenes desde hace 5 minutos", "/", "offline")
+
