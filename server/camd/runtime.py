@@ -147,19 +147,22 @@ class Runtime:
     def _maintain(self) -> None:
         last_purge = 0.0
         while not self._halt.wait(10):
-            armed, reason = self.arming.decision()
-            self.mqtt.publish("armed", "ON" if armed else "OFF")
-            self.mqtt.publish("mode", self.arming.mode)
-            self.mqtt.publish("camera", "online" if self.grabber.online else "offline")
+            try:
+                armed, reason = self.arming.decision()
+                self.mqtt.publish("armed", "ON" if armed else "OFF")
+                self.mqtt.publish("mode", self.arming.mode)
+                self.mqtt.publish("camera", "online" if self.grabber.online else "offline")
 
-            if int(time.time()) % 30 < 10:
-                self.camera_info = self.grabber.fetch_status()
+                if int(time.time()) % 30 < 10:
+                    self.camera_info = self.grabber.fetch_status()
 
-            self.recorder.tick()
-            self._check_offline()
-            if time.time() - last_purge > 3600:
-                purge(self.cfg, self.db)
-                last_purge = time.time()
+                self.recorder.tick()
+                self._check_offline()
+                if time.time() - last_purge > 3600:
+                    purge(self.cfg, self.db)
+                    last_purge = time.time()
+            except Exception:
+                log.exception("maintenance cycle failed")
 
     def _check_offline(self) -> None:
         latest = self.grabber.latest

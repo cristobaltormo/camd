@@ -86,7 +86,10 @@ class Photos:
             return False
         for key in ("path", "thumb_path"):
             if row[key]:
-                Path(row[key]).unlink(missing_ok=True)
+                try:
+                    Path(row[key]).unlink(missing_ok=True)
+                except OSError:
+                    log.warning("could not delete %s", row[key])
         self.db.execute("DELETE FROM photos WHERE id=?", (photo_id,))
         return True
 

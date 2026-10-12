@@ -1,4 +1,4 @@
-import { api, busy, choiceDialog, chip, fmtAgo, fmtDay, fmtTime, h, icon, prefs, saveToDevice, spinner, toast } from "./lib.js";
+import { api, busy, choiceDialog, chip, fmtAgo, fmtDay, fmtTime, h, icon, prefs, saveToDevice, spinner, toast } from "./lib.js?v=fd59e0f40c";
 
 const REASONS = {
   privacy: "Privacidad activa: la cámara está apagada",

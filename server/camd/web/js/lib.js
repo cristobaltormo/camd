@@ -73,7 +73,7 @@ export function icon(name, cls) {
 
 export class LoginRequired extends Error {}
 
-const listeners = { offline: [], login: [] };
+const listeners = { offline: [], login: [], access: [] };
 export const on = (event, fn) => listeners[event].push(fn);
 const emit = (event, value) => listeners[event].forEach((fn) => fn(value));
 
@@ -97,13 +97,17 @@ export async function api(path, opts = {}) {
   const timer = setTimeout(() => controller.abort(), opts.timeout || TIMEOUT_MS);
   let res;
   try {
-    res = await fetch(path, { ...init, signal: controller.signal });
+    res = await fetch(path, { ...init, redirect: "manual", signal: controller.signal });
   } catch (e) {
     if (e.name === "AbortError") throw new Error("El servidor tarda demasiado en responder");
     setOffline(true);
     throw new Error("Sin conexión con el servidor");
   } finally {
     clearTimeout(timer);
+  }
+  if (res.type === "opaqueredirect") {
+    emit("access");
+    throw new LoginRequired();
   }
   setOffline(false);
   if (res.status === 401 && !path.startsWith("/api/auth/")) {
@@ -192,7 +196,7 @@ export function deviceLabel(ua) {
   return browser ? `${os} · ${browser}` : os;
 }
 
-export function toast(text, tone, action) {
+export function toast(text, tone, action, sticky = false) {
   let box = document.getElementById("toasts");
   if (!box) {
     box = h("div", { id: "toasts", "aria-live": "polite" });
@@ -200,9 +204,10 @@ export function toast(text, tone, action) {
   }
   const el = h("div", { class: "toast " + (tone || "") }, h("span", { text }), action ? h("button", { class: "toast-action", text: action[0], onclick: action[1] }) : null);
   box.append(el);
-  if (!action) {
-    setTimeout(() => el.classList.add("out"), 2600);
-    setTimeout(() => el.remove(), 3000);
+  if (!sticky) {
+    const life = action ? 7000 : 2600;
+    setTimeout(() => el.classList.add("out"), life);
+    setTimeout(() => el.remove(), life + 400);
   }
   return el;
 }

@@ -1,4 +1,4 @@
-import { api, b64uToBuf, bufToB64u, deviceLabel, h, icon } from "./lib.js";
+import { api, b64uToBuf, bufToB64u, deviceLabel, h, icon } from "./lib.js?v=fd59e0f40c";
 
 async function registerPasskey(code) {
   const options = await api("/api/auth/register/options", { method: "POST", body: { code } });

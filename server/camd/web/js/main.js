@@ -1,13 +1,15 @@
-import { api, h, icon, isOffline, LoginRequired, on, spinner, store, toast } from "./lib.js";
-import { authScreen, offlineScreen } from "./auth.js";
+import { api, h, icon, isOffline, LoginRequired, on, spinner, store, toast } from "./lib.js?v=fd59e0f40c";
+import { authScreen, offlineScreen } from "./auth.js?v=fd59e0f40c";
+
+export const BUILD = "fd59e0f40c";
 
 const root = document.getElementById("app");
 
 const VIEWS = {
-  live: { label: "En vivo", load: () => import("./live.js") },
-  events: { label: "Eventos", load: () => import("./events.js") },
-  photos: { label: "Fotos", load: () => import("./photos.js") },
-  settings: { label: "Ajustes", load: () => import("./settings.js") },
+  live: { label: "En vivo", load: () => import("./live.js?v=fd59e0f40c") },
+  events: { label: "Eventos", load: () => import("./events.js?v=fd59e0f40c") },
+  photos: { label: "Fotos", load: () => import("./photos.js?v=fd59e0f40c") },
+  settings: { label: "Ajustes", load: () => import("./settings.js?v=fd59e0f40c") },
 };
 
 const install = { event: null, available: () => !!install.event, async run() {
@@ -24,8 +26,27 @@ function registerWorker() {
   const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register("/sw.js").catch(() => {});
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (hadController) toast("Hay una versión nueva de la aplicación", "ok", ["Recargar", () => location.reload()]);
+    if (hadController) toast("Hay una versión nueva de la aplicación", "ok", ["Recargar", () => location.reload()], true);
   });
+}
+
+async function hardReload() {
+  try {
+    const regs = await navigator.serviceWorker?.getRegistrations();
+    for (const reg of regs || []) await reg.unregister();
+    for (const key of await caches.keys()) await caches.delete(key);
+  } catch (_) {}
+  location.reload();
+}
+
+function checkBuild(serverBuild) {
+  if (BUILD === "dev" || !serverBuild || serverBuild === BUILD) return;
+  if (sessionStorage.getItem("cam.healed") !== serverBuild) {
+    sessionStorage.setItem("cam.healed", serverBuild);
+    hardReload();
+    return;
+  }
+  toast("Hay una versión nueva de la aplicación", "ok", ["Actualizar", () => hardReload()], true);
 }
 
 function navigate(path) {
@@ -63,8 +84,9 @@ async function route() {
   let mod;
   try {
     mod = await VIEWS[name].load();
-  } catch (_) {
-    if (seq === routeSeq) shell.view.replaceChildren(h("div", { class: "empty" }, h("p", { text: "No se pudo cargar la sección." }), h("button", { class: "btn", text: "Reintentar", onclick: () => route() })));
+  } catch (e) {
+    console.error(e);
+    if (seq === routeSeq) shell.view.replaceChildren(h("div", { class: "empty" }, icon("signal"), h("h3", { text: "No se pudo cargar la sección" }), h("p", { class: "muted", text: "Puede que el móvil tenga guardada una versión antigua de la aplicación." }), h("button", { class: "btn primary", text: "Actualizar la aplicación", onclick: () => hardReload() })));
     return;
   }
   if (seq !== routeSeq) return;
@@ -143,6 +165,7 @@ async function pollShell() {
   if (!shell) return;
   try {
     const s = await api("/api/status");
+    checkBuild(s.build);
     shell.setStatus(s);
     const { count } = await api(`/api/events/count?since=${store.get("eventsSeen", Date.now() / 1000)}`);
     shell.setBadge(count);
@@ -192,5 +215,11 @@ window.addEventListener("unhandledrejection", (e) => report(e.reason));
 window.addEventListener("error", (e) => report(e.error || e.message));
 
 on("login", () => location.reload());
+on("access", () => {
+  const last = Number(sessionStorage.getItem("cam.accessReload") || 0);
+  if (Date.now() - last < 15000) return toast("La sesión de Cloudflare ha caducado. Recarga la página para entrar de nuevo.", "bad", ["Recargar", () => location.reload()], true);
+  sessionStorage.setItem("cam.accessReload", String(Date.now()));
+  location.reload();
+});
 registerWorker();
 start();

@@ -20,7 +20,9 @@ from .viewers import ViewerPool
 
 log = logging.getLogger("camd.app")
 WEB_DIR = Path(__file__).parent / "web"
-VERSION = "1.2.0"
+VERSION = "1.2.1"
+BUILD_FILE = Path(__file__).parent / "build.txt"
+BUILD = BUILD_FILE.read_text().strip() if BUILD_FILE.exists() else "dev"
 COOKIE = "cam_session"
 MAX_VIEWERS = 4
 MAX_CLIP_S = 300
@@ -144,7 +146,7 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"
         if "cache-control" not in response.headers:
-            response.headers["Cache-Control"] = "no-store" if request.url.path.startswith("/api/") else "no-cache"
+            response.headers["Cache-Control"] = "no-store" if request.url.path.startswith("/api/") else "private, no-cache"
         return response
 
     def set_cookie(response: Response, token: str) -> None:
@@ -258,6 +260,7 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
             "push_subscriptions": rt.push.count(),
             "notifich": rt.push.notifich_enabled,
             "version": VERSION,
+            "build": BUILD,
             "storage": {
                 "events": usage["n"],
                 "bytes": usage["bytes"],

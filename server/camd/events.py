@@ -229,5 +229,8 @@ def purge(cfg: Config, db: Database) -> int:
 def remove_event(db: Database, row) -> None:
     for key in ("clip_path", "thumb_path"):
         if row[key]:
-            Path(row[key]).unlink(missing_ok=True)
+            try:
+                Path(row[key]).unlink(missing_ok=True)
+            except OSError:
+                log.warning("could not delete %s", row[key])
     db.execute("DELETE FROM events WHERE id=?", (row["id"],))

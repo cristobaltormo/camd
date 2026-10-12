@@ -247,6 +247,6 @@ def test_notifich_failure_does_not_raise(tmp_path, monkeypatch):
 
 def test_static_files_revalidate_and_api_is_never_cached(env):
     _, _, _, client = env
-    assert client.get("/style.css").headers["cache-control"] == "no-cache"
-    assert client.get("/js/main.js").headers["cache-control"] == "no-cache"
+    assert client.get("/style.css").headers["cache-control"] == "private, no-cache"
+    assert client.get("/js/main.js").headers["cache-control"] == "private, no-cache"
     assert client.get("/api/auth/state").headers["cache-control"] == "no-store"

@@ -5,6 +5,8 @@ cd "$(dirname "$0")"
 ID=131
 DEST=/opt/habitacion-cam
 
+python3 stamp.py >/dev/null
+
 tar --exclude='__pycache__' --exclude='.pytest_cache' -cf - camd tests deploy.sh pyproject.toml systemd 2>/dev/null \
   | pct exec $ID -- bash -c "mkdir -p $DEST/app && tar -xf - -C $DEST/app && chown -R root:root $DEST/app"
 

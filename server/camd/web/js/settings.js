@@ -1,4 +1,4 @@
-import { api, b64uToBuf, chip, confirmDialog, deviceLabel, fmtBytes, fmtUptime, h, icon, isIOS, isStandalone, prefs, toast } from "./lib.js";
+import { api, b64uToBuf, chip, confirmDialog, deviceLabel, fmtBytes, fmtUptime, h, icon, isIOS, isStandalone, prefs, toast } from "./lib.js?v=fd59e0f40c";
 
 const SECTIONS = [
   ["alerts", "Avisos", "bell"],
