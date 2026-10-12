@@ -7,8 +7,8 @@ Camera for Cristobal's room. Read `README.md` for the architecture. Working rule
   `wifi casa movistar (2.4GHz)`).
 - Develop on the Proxmox host in `/root/proyectos/habitacion-cam`; the service runs in LXC 131 (`cam`, 192.168.1.73).
   Publish from the host with the `publicar-git` skill (signed as him, no Claude trailers). Never commit inside the LXC.
-- Nothing goes to the internet without his OK: the Cloudflare tunnel and Access app for `cam.cristobal.cc` are documented
-  in `docs/cloudflare.md` but not created. LAN access works over HTTPS through the AdGuard rewrite.
+- It is exposed through its own Cloudflare tunnel with Access in front (`docs/cloudflare.md`, authorised by him on 2026-10-12).
+  Do not widen that: no extra Access policies, no routing it through the shared tunnel or the VPS failover.
 - Back up (vzdump of LXC 131 with date and reason) before changing anything that is already in use.
 
 ## Commands
