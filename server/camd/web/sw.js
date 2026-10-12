@@ -1,4 +1,4 @@
-const CACHE = "cam-shell-v3";
+const CACHE = "cam-shell-v4";
 const SHELL = ["/", "/style.css", "/theme.js", "/icon.svg", "/icon-192.png", "/js/main.js", "/js/lib.js", "/js/auth.js", "/js/live.js", "/js/events.js", "/js/settings.js"];
 
 self.addEventListener("install", (event) => {
@@ -16,7 +16,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (req.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/")) return;
   event.respondWith(
-    fetch(req)
+    fetch(req, { cache: "no-cache" })
       .then((res) => {
         if (res.ok && res.type === "basic") {
           const copy = res.clone();

@@ -27,7 +27,7 @@ Camera for Cristobal's room. Read `README.md` for the architecture. Working rule
 
 `server/camd/web/` is a build-free PWA: ES modules in `js/` (`main.js` shell and hash router, one module per section), `theme.js` applies
 the saved theme before first paint, `sw.js` caches the shell network-first. The CSP forbids inline styles and scripts: set styles through
-`el.style.x = ...`, never `setAttribute("style")` or `<style>`. Bump `CACHE` in `sw.js` and `VERSION` in `server/camd/app.py` on UI releases.
+`el.style.x = ...`, never `setAttribute("style")` or `<style>`. Bump `CACHE` in `sw.js`, `VERSION` in `server/camd/app.py` and the `?v=` of the three assets in `index.html` on UI releases (stale CSS with new JS shows giant icons).
 To look at it without the camera run `python tools/ui-mock.py` and screenshot with `chromium --headless --screenshot` at 390x844 and 1440x900.
 
 ## Traps

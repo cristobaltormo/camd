@@ -18,7 +18,7 @@ from .runtime import Runtime
 
 log = logging.getLogger("camd.app")
 WEB_DIR = Path(__file__).parent / "web"
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 COOKIE = "cam_session"
 MAX_VIEWERS = 4
 
@@ -132,8 +132,8 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"
-        if request.url.path.startswith("/api/") and "cache-control" not in response.headers:
-            response.headers["Cache-Control"] = "no-store"
+        if "cache-control" not in response.headers:
+            response.headers["Cache-Control"] = "no-store" if request.url.path.startswith("/api/") else "no-cache"
         return response
 
     def set_cookie(response: Response, token: str) -> None:

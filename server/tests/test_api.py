@@ -243,3 +243,10 @@ def test_notifich_failure_does_not_raise(tmp_path, monkeypatch):
     monkeypatch.setattr(push_module.requests, "post", boom)
     channel = push_module.Push(Database(tmp_path / "t.sqlite3"), tmp_path / "vapid.pem", "https://localhost", "https://x", "k")
     assert channel.send("a", "b") == 0
+
+
+def test_static_files_revalidate_and_api_is_never_cached(env):
+    _, _, _, client = env
+    assert client.get("/style.css").headers["cache-control"] == "no-cache"
+    assert client.get("/js/main.js").headers["cache-control"] == "no-cache"
+    assert client.get("/api/auth/state").headers["cache-control"] == "no-store"
