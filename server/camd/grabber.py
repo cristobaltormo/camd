@@ -19,6 +19,7 @@ class Grabber(threading.Thread):
         self.on_frame = on_frame
         self.on_connect = on_connect or (lambda: None)
         self._halt = threading.Event()
+        self._kick = threading.Event()
         self._cond = threading.Condition()
         self._latest: tuple[float, bytes] | None = None
         self._seq = 0
@@ -40,6 +41,7 @@ class Grabber(threading.Thread):
 
     def stop(self) -> None:
         self._halt.set()
+        self._kick.set()
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.token}"}
@@ -57,6 +59,8 @@ class Grabber(threading.Thread):
             self._standby = on
             if on:
                 self._latest = None
+            else:
+                self._kick.set()
         return ok
 
     def apply_controls(self, controls: dict[str, int]) -> dict[str, bool]:
@@ -85,13 +89,15 @@ class Grabber(threading.Thread):
         except (OSError, ValueError):
             return None
 
-    def frames(self, max_wait: float = 5.0) -> Iterator[bytes]:
-        """Yield each new frame as it arrives; ends when no frame shows up for max_wait seconds."""
+    def frames(self, max_wait: float = 5.0, first_wait: float = 15.0) -> Iterator[bytes]:
+        """Yield each new frame as it arrives; ends when no frame shows up for max_wait seconds (first_wait for the first one)."""
         last = self._seq
+        wait = first_wait
         while not self._halt.is_set():
             with self._cond:
-                if not self._cond.wait_for(lambda: self._seq != last, timeout=max_wait):
+                if not self._cond.wait_for(lambda: self._seq != last, timeout=wait):
                     return
+                wait = max_wait
                 last = self._seq
                 frame = self._latest
             if frame:
@@ -101,19 +107,23 @@ class Grabber(threading.Thread):
         backoff = 1.0
         while not self._halt.is_set():
             if self._standby:
-                time.sleep(1)
+                self._kick.wait(1)
+                self._kick.clear()
                 continue
             try:
                 self._consume()
                 backoff = 1.0
             except (OSError, http.client.HTTPException, ValueError) as exc:
                 log.warning("stream error: %s", exc)
-            if self._halt.wait(backoff):
+            if self._kick.wait(backoff):
+                self._kick.clear()
+                backoff = 1.0
+            if self._halt.is_set():
                 return
-            backoff = min(backoff * 2, 5.0)
+            backoff = min(backoff * 2, 3.0)
 
     def _consume(self) -> None:
-        conn = http.client.HTTPConnection(self.host, 81, timeout=10)
+        conn = http.client.HTTPConnection(self.host, 81, timeout=6)
         try:
             conn.request("GET", "/stream", headers=self._headers())
             resp = conn.getresponse()

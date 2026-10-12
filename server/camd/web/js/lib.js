@@ -37,6 +37,13 @@ export const ICONS = {
   more: svg('<circle cx="5" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="19" cy="12" r="1.2" fill="currentColor"/>'),
   select: svg('<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>'),
   keyboard: svg('<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M7 14h10"/>'),
+  photos: svg('<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="M4 18l5-5 4 4 3-3 4 4"/>'),
+  record: svg('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/>'),
+  stop: svg('<rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/>'),
+  pin: svg('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>'),
+  pinOn: svg('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" fill="currentColor"/>'),
+  share: svg('<path d="M12 15V4M8 8l4-4 4 4M5 13v6h14v-6"/>'),
+  cloud: svg('<path d="M7 18a4 4 0 01-.6-7.95A5.5 5.5 0 0117 9a4.5 4.5 0 01.5 9z"/>'),
   refresh: svg('<path d="M20 11a8 8 0 00-14-4.5L4 9M4 4v5h5M4 13a8 8 0 0014 4.5L20 15M20 20v-5h-5"/>'),
 };
 
@@ -78,18 +85,25 @@ function setOffline(value) {
   emit("offline", value);
 }
 
+const TIMEOUT_MS = 20000;
+
 export async function api(path, opts = {}) {
   const init = { method: opts.method || "GET", credentials: "same-origin", headers: {} };
   if (opts.body !== undefined) {
     init.body = JSON.stringify(opts.body);
     init.headers["Content-Type"] = "application/json";
   }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts.timeout || TIMEOUT_MS);
   let res;
   try {
-    res = await fetch(path, init);
-  } catch (_) {
+    res = await fetch(path, { ...init, signal: controller.signal });
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error("El servidor tarda demasiado en responder");
     setOffline(true);
     throw new Error("Sin conexión con el servidor");
+  } finally {
+    clearTimeout(timer);
   }
   setOffline(false);
   if (res.status === 401 && !path.startsWith("/api/auth/")) {
@@ -99,10 +113,19 @@ export async function api(path, opts = {}) {
   if (!res.ok) {
     let detail = res.statusText;
     try { detail = (await res.json()).detail || detail; } catch (_) {}
-    throw new Error(typeof detail === "string" ? detail : "Datos no válidos");
+    throw new Error(typeof detail === "string" ? friendly(detail) : "Datos no válidos");
   }
   return res.status === 204 ? null : res.json();
 }
+
+const MESSAGES = {
+  "camera did not answer": "La cámara no responde",
+  "camera not available": "La cámara no está disponible ahora",
+  "no frame": "La cámara no está enviando imagen",
+  "no clip in progress": "No hay ningún clip grabándose",
+  "too many attempts": "Demasiados intentos, espera un momento",
+};
+const friendly = (detail) => MESSAGES[detail] || (/^photo limit/.test(detail) ? "Has llegado al límite de fotos guardadas" : detail);
 
 export const store = {
   get(key, fallback) {
@@ -216,3 +239,66 @@ export function emptyState(iconName, title, text, action) {
 
 export const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 export const isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+
+export const prefs = {
+  get photoDest() { return store.get("photoDest", "ask"); },
+  set photoDest(v) { store.set("photoDest", v); },
+  get clipSeconds() { return store.get("clipSeconds", 30); },
+  set clipSeconds(v) { store.set("clipSeconds", v); },
+};
+
+export async function saveToDevice(source, filename) {
+  let blob = source;
+  if (typeof source === "string") {
+    const res = await fetch(source, { credentials: "same-origin" });
+    if (!res.ok) throw new Error("No se pudo descargar el archivo");
+    blob = await res.blob();
+  }
+  const file = new File([blob], filename, { type: blob.type });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      return "shared";
+    } catch (e) {
+      if (e.name === "AbortError") return "cancelled";
+    }
+  }
+  const href = URL.createObjectURL(blob);
+  const a = h("a", { href, download: filename });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 10000);
+  return "downloaded";
+}
+
+export async function busy(button, fn) {
+  if (button.disabled) return;
+  button.disabled = true;
+  try { return await fn(); } finally { button.disabled = false; }
+}
+
+export function choiceDialog(title, text, choices, remember) {
+  return new Promise((resolve) => {
+    let rememberBox = null;
+    const done = (value) => {
+      document.removeEventListener("keydown", onKey);
+      overlay.remove();
+      resolve(value ? { value, remember: !!(rememberBox && rememberBox.checked) } : null);
+    };
+    const onKey = (e) => { if (e.key === "Escape") done(null); };
+    if (remember) rememberBox = h("input", { type: "checkbox", id: "remember-choice" });
+    const overlay = h("div", { class: "modal center-modal", onclick: (e) => { if (e.target === overlay) done(null); } },
+      h("div", { class: "dialog stack", role: "dialog", "aria-modal": "true" },
+        h("h3", { text: title }),
+        text ? h("p", { class: "muted", text }) : null,
+        h("div", { class: "choices" }, choices.map(([id, label, hint, ic]) =>
+          h("button", { class: "choice", onclick: () => done(id) }, icon(ic), h("span", {}, h("strong", { text: label }), h("span", { class: "muted", text: hint }))))),
+        remember ? h("label", { class: "remember", for: "remember-choice" }, rememberBox, h("span", { text: "Recordar mi elección" })) : null,
+        h("div", { class: "row end" }, h("button", { class: "btn", text: "Cancelar", onclick: () => done(null) }))
+      )
+    );
+    document.addEventListener("keydown", onKey);
+    document.body.append(overlay);
+  });
+}

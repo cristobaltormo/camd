@@ -15,6 +15,7 @@ log = logging.getLogger("camd.events")
 START_STREAK = 3
 MIN_FPS = 1.0
 MAX_FPS = 30.0
+STALL_S = 20.0
 
 
 class EventRecorder:
@@ -38,13 +39,22 @@ class EventRecorder:
         self._last_motion = 0.0
         self._start = 0.0
         self._workers: list[threading.Thread] = []
+        self._lock = threading.RLock()
+        self._manual = False
+        self._manual_until = 0.0
+        self._last_frame = 0.0
 
     @property
     def recording(self) -> bool:
         return self._event_id is not None
 
     def feed(self, ts: float, jpeg: bytes, motion: bool, score: float, armed: bool) -> None:
+        with self._lock:
+            self._feed(ts, jpeg, motion, score, armed)
+
+    def _feed(self, ts: float, jpeg: bytes, motion: bool, score: float, armed: bool) -> None:
         item = (ts, jpeg, score)
+        self._last_frame = ts
 
         if self._event_id is None:
             self._preroll.append(item)
@@ -58,6 +68,10 @@ class EventRecorder:
         self._frames.append(item)
         if motion:
             self._last_motion = ts
+        if self._manual:
+            if ts >= self._manual_until:
+                self._end(ts)
+            return
         if not armed:
             self._end(ts)
         elif ts - self._last_motion > self.cfg.post_roll_s:
@@ -65,22 +79,25 @@ class EventRecorder:
         elif ts - self._start > self.cfg.max_event_s:
             self._end(ts)
 
-    def _begin(self, ts: float) -> None:
+    def _begin(self, ts: float, manual: bool = False) -> None:
         self._frames = list(self._preroll)
         self._preroll.clear()
         self._start = self._frames[0][0] if self._frames else ts
         self._last_motion = ts
         self._streak = 0
         cur = self.db.execute(
-            "INSERT INTO events(start_ts, status) VALUES(?, 'recording')", (self._start,)
+            "INSERT INTO events(start_ts, status, kind, keep) VALUES(?, 'recording', ?, ?)",
+            (self._start, "manual" if manual else "motion", int(manual)),
         )
         self._event_id = cur.lastrowid
-        log.info("event %s started", self._event_id)
-        self.on_start(self._event_id, self._start)
+        log.info("event %s started%s", self._event_id, " (manual)" if manual else "")
+        if not manual:
+            self.on_start(self._event_id, self._start)
 
     def _end(self, ts: float) -> None:
         event_id, frames, start = self._event_id, self._frames, self._start
         self._event_id = None
+        self._manual = False
         self._frames = []
         self._streak = 0
         worker = threading.Thread(
@@ -94,8 +111,43 @@ class EventRecorder:
             worker.join(timeout)
 
     def close_open_event(self) -> None:
-        if self._event_id is not None:
+        with self._lock:
+            if self._event_id is not None:
+                self._end(time.time())
+
+    def start_manual(self, seconds: float, now: float | None = None) -> int:
+        now = now if now is not None else time.time()
+        with self._lock:
+            self._manual_until = now + seconds
+            self._last_frame = max(self._last_frame, now)
+            if self._event_id is None:
+                self._manual = True
+                self._begin(now, manual=True)
+            elif not self._manual:
+                self._manual = True
+                self.db.execute("UPDATE events SET kind='manual', keep=1 WHERE id=?", (self._event_id,))
+            return self._event_id
+
+    def stop_manual(self) -> int | None:
+        with self._lock:
+            if self._event_id is None or not self._manual:
+                return None
+            event_id = self._event_id
             self._end(time.time())
+            return event_id
+
+    def manual_state(self) -> dict:
+        with self._lock:
+            active = self._manual and self._event_id is not None
+            return {"active": active, "id": self._event_id if active else None, "until": self._manual_until if active else 0, "started": self._start if active else 0}
+
+    def tick(self, now: float | None = None) -> None:
+        now = now if now is not None else time.time()
+        with self._lock:
+            if self._event_id is None:
+                return
+            if (self._manual and now >= self._manual_until) or now - self._last_frame > STALL_S:
+                self._end(now)
 
     def _finalize(self, event_id: int, frames: list[tuple[float, bytes, float]], start: float) -> None:
         try:
@@ -156,7 +208,7 @@ def purge(cfg: Config, db: Database) -> int:
     """Delete events older than the retention window, then oldest ones while over the disk cap."""
     removed = 0
     cutoff = time.time() - cfg.retention_days * 86400
-    rows = db.query("SELECT id, clip_path, thumb_path FROM events WHERE start_ts < ? AND status != 'recording'", (cutoff,))
+    rows = db.query("SELECT id, clip_path, thumb_path FROM events WHERE start_ts < ? AND status != 'recording' AND keep=0", (cutoff,))
     for row in rows:
         remove_event(db, row)
         removed += 1
@@ -166,7 +218,7 @@ def purge(cfg: Config, db: Database) -> int:
         total = db.one("SELECT COALESCE(SUM(size_bytes), 0) AS s FROM events")["s"]
         if total <= cap:
             break
-        oldest = db.one("SELECT id, clip_path, thumb_path FROM events WHERE status != 'recording' ORDER BY start_ts LIMIT 1")
+        oldest = db.one("SELECT id, clip_path, thumb_path FROM events WHERE status != 'recording' AND keep=0 ORDER BY start_ts LIMIT 1")
         if oldest is None:
             break
         remove_event(db, oldest)

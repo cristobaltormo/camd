@@ -10,6 +10,7 @@ from . import prefs
 from .grabber import Grabber
 from .motion import MotionDetector, MotionSettings
 from .mqtt import Mqtt
+from .photos import Photos
 from .presence import Presence
 from .push import Push
 
@@ -32,6 +33,7 @@ class Runtime:
 
         self.presence = Presence(cfg.presence_devices, cfg.presence_grace_s)
         self.arming = Arming(db, self.presence)
+        self.photos = Photos(cfg, db)
         self.push = Push(db, cfg.vapid_path, cfg.push_subject, cfg.notifich_url, cfg.notifich_key)
         self.mqtt = Mqtt(cfg, self._external_presence)
         self.detector = MotionDetector(self.load_motion_settings())
@@ -153,6 +155,7 @@ class Runtime:
             if int(time.time()) % 30 < 10:
                 self.camera_info = self.grabber.fetch_status()
 
+            self.recorder.tick()
             self._check_offline()
             if time.time() - last_purge > 3600:
                 purge(self.cfg, self.db)

@@ -40,7 +40,20 @@ CREATE TABLE IF NOT EXISTS push_subs (
     endpoint TEXT PRIMARY KEY,
     data TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL NOT NULL,
+    path TEXT NOT NULL,
+    thumb_path TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS photos_ts ON photos(ts);
 """
+
+MIGRATIONS = (
+    ("events", "kind", "TEXT NOT NULL DEFAULT 'motion'"),
+    ("events", "keep", "INTEGER NOT NULL DEFAULT 0"),
+)
 
 
 class Database:
@@ -52,6 +65,10 @@ class Database:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.executescript(SCHEMA)
+        for table, column, ddl in MIGRATIONS:
+            have = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})")}
+            if column not in have:
+                self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
         self._conn.commit()
 
     def execute(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:

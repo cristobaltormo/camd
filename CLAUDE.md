@@ -16,6 +16,8 @@ Camera for Cristobal's room. Read `README.md` for the architecture. Working rule
 | Task | Command |
 |---|---|
 | Run the tests on the LXC | `server/deploy.sh test` |
+| Frontend unit tests | `node --test server/webtests/` |
+| Browser tests (stateful fake API) | `python tools/ui-mock.py &` then `node --experimental-websocket tools/ui-e2e.mjs` |
 | Deploy and restart | `server/deploy.sh restart` |
 | Service logs | `pct exec 131 -- journalctl -u habitacion-cam -f` |
 | Passkey enrollment code (10 min) | `pct exec 131 -- sudo -u camd /opt/habitacion-cam/venv/bin/python -m camd.ctl enroll` |
@@ -28,7 +30,7 @@ Camera for Cristobal's room. Read `README.md` for the architecture. Working rule
 `server/camd/web/` is a build-free PWA: ES modules in `js/` (`main.js` shell and hash router, one module per section), `theme.js` applies
 the saved theme before first paint, `sw.js` caches the shell network-first. The CSP forbids inline styles and scripts: set styles through
 `el.style.x = ...`, never `setAttribute("style")` or `<style>`. Bump `CACHE` in `sw.js`, `VERSION` in `server/camd/app.py` and the `?v=` of the three assets in `index.html` on UI releases (stale CSS with new JS shows giant icons).
-To look at it without the camera run `python tools/ui-mock.py` and screenshot with `chromium --headless --screenshot` at 390x844 and 1440x900.
+The browser tests cover privacy toggling, deleting events and photos, manual clips and every settings section: run them before deploying UI changes. To look at it without the camera run `python tools/ui-mock.py` and screenshot with `chromium --headless --screenshot` at 390x844 and 1440x900.
 
 ## Traps
 

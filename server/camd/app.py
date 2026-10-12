@@ -14,13 +14,16 @@ from .auth import SESSION_TTL, Auth, AuthError
 from .config import Config
 from .db import Database
 from .events import remove_event
+from .photos import PhotoLimit
 from .runtime import Runtime
+from .viewers import ViewerPool
 
 log = logging.getLogger("camd.app")
 WEB_DIR = Path(__file__).parent / "web"
-VERSION = "1.1.1"
+VERSION = "1.2.0"
 COOKIE = "cam_session"
 MAX_VIEWERS = 4
+MAX_CLIP_S = 300
 
 CSP = (
     "default-src 'self'; img-src 'self' data: blob:; media-src 'self'; style-src 'self'; "
@@ -80,6 +83,14 @@ class SettingsBody(BaseModel):
 
 class IdsBody(BaseModel):
     ids: list[int] = Field(min_length=1, max_length=200)
+
+
+class ClipBody(BaseModel):
+    seconds: int = Field(default=30, ge=5, le=MAX_CLIP_S)
+
+
+class KeepBody(BaseModel):
+    keep: bool
 
 
 class PushBody(BaseModel):
@@ -226,6 +237,7 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
         last = db.one("SELECT id, start_ts, status FROM events ORDER BY start_ts DESC LIMIT 1")
         info = rt.camera_info or {}
         usage = db.one("SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS bytes FROM events")
+        photo_count, photo_bytes = rt.photos.usage()
         return {
             "armed": armed,
             "reason": reason,
@@ -246,7 +258,14 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
             "push_subscriptions": rt.push.count(),
             "notifich": rt.push.notifich_enabled,
             "version": VERSION,
-            "storage": {"events": usage["n"], "bytes": usage["bytes"], "cap_bytes": int(cfg.max_disk_gb * 1024**3)},
+            "storage": {
+                "events": usage["n"],
+                "bytes": usage["bytes"],
+                "cap_bytes": int(cfg.max_disk_gb * 1024**3),
+                "photos": photo_count,
+                "photo_bytes": photo_bytes,
+            },
+            "clip": rt.recorder.manual_state(),
         }
 
     @app.post("/api/mode")
@@ -310,6 +329,8 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
             "status": row["status"],
             "score": row["score"],
             "size": row["size_bytes"],
+            "kind": row["kind"],
+            "keep": bool(row["keep"]),
         }
 
     @app.get("/api/events")
@@ -360,34 +381,112 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
 
     # ---- live ----
 
+    def fresh_frame() -> tuple[float, bytes]:
+        latest = rt.grabber.latest
+        if latest is None or not rt.grabber.online:
+            raise HTTPException(503, "no frame")
+        return latest
+
     @app.get("/api/snapshot")
     def snapshot(download: bool = False, _: int = Depends(session)):
-        latest = rt.grabber.latest
-        if latest is None:
-            raise HTTPException(503, "no frame")
+        ts, jpeg = fresh_frame()
         headers = {"Cache-Control": "no-store"}
         if download:
-            headers["Content-Disposition"] = f'attachment; filename="habitacion-{int(latest[0])}.jpg"'
-        return Response(latest[1], media_type="image/jpeg", headers=headers)
+            headers["Content-Disposition"] = f'attachment; filename="habitacion-{int(ts)}.jpg"'
+        return Response(jpeg, media_type="image/jpeg", headers=headers)
+
+    pool = ViewerPool(MAX_VIEWERS)
 
     @app.get("/api/live")
     def live(_: int = Depends(session)):
-        if rt.grabber.viewers >= MAX_VIEWERS:
-            raise HTTPException(429, "too many viewers")
+        if rt.grabber.standby:
+            raise HTTPException(503, "camera in standby")
+        cancel = pool.join()
 
         def generate():
             rt.grabber.viewers += 1
             try:
                 for jpeg in rt.grabber.frames():
+                    if cancel.is_set():
+                        return
                     yield b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n" % len(jpeg)
                     yield jpeg
                     yield b"\r\n"
             finally:
                 rt.grabber.viewers -= 1
+                pool.leave(cancel)
 
         return StreamingResponse(
             generate(), media_type="multipart/x-mixed-replace; boundary=frame", headers={"Cache-Control": "no-store"}
         )
+
+    # ---- manual clips and kept events ----
+
+    @app.post("/api/clips/start")
+    def clip_start(body: ClipBody, _: int = Depends(session)):
+        if rt.grabber.standby or not rt.grabber.online:
+            raise HTTPException(409, "camera not available")
+        rt.recorder.start_manual(body.seconds)
+        return rt.recorder.manual_state()
+
+    @app.post("/api/clips/stop")
+    def clip_stop(_: int = Depends(session)):
+        if rt.recorder.stop_manual() is None:
+            raise HTTPException(404, "no clip in progress")
+        return {"ok": True}
+
+    @app.post("/api/events/{event_id}/keep")
+    def keep_event(event_id: int, body: KeepBody, _: int = Depends(session)):
+        if db.one("SELECT id FROM events WHERE id=? AND status != 'recording'", (event_id,)) is None:
+            raise HTTPException(404, "not found")
+        db.execute("UPDATE events SET keep=? WHERE id=?", (int(body.keep), event_id))
+        return {"ok": True, "keep": body.keep}
+
+    # ---- photos ----
+
+    @app.post("/api/photos")
+    def photo_take(_: int = Depends(session)):
+        ts, jpeg = fresh_frame()
+        try:
+            return rt.photos.save(jpeg, ts)
+        except PhotoLimit as exc:
+            raise HTTPException(409, str(exc))
+        except ValueError as exc:
+            raise HTTPException(422, str(exc))
+
+    @app.get("/api/photos")
+    def photo_list(limit: int = 60, before: float | None = None, _: int = Depends(session)):
+        return {"photos": rt.photos.list(max(1, min(limit, 200)), before)}
+
+    def photo_file(photo_id: int, thumb: bool, download: bool = False) -> FileResponse:
+        path = rt.photos.file(photo_id, thumb)
+        if path is None:
+            raise HTTPException(404, "not found")
+        row = rt.photos.get(photo_id)
+        return FileResponse(
+            path,
+            media_type="image/jpeg",
+            filename=f"habitacion-{int(row['ts'])}.jpg" if download else None,
+            headers={"Cache-Control": "private, max-age=3600"},
+        )
+
+    @app.get("/api/photos/{photo_id}/img")
+    def photo_img(photo_id: int, download: bool = False, _: int = Depends(session)):
+        return photo_file(photo_id, False, download)
+
+    @app.get("/api/photos/{photo_id}/thumb")
+    def photo_thumb(photo_id: int, _: int = Depends(session)):
+        return photo_file(photo_id, True)
+
+    @app.delete("/api/photos/{photo_id}")
+    def photo_delete(photo_id: int, _: int = Depends(session)):
+        if not rt.photos.remove(photo_id):
+            raise HTTPException(404, "not found")
+        return {"ok": True}
+
+    @app.post("/api/photos/delete")
+    def photo_delete_many(body: IdsBody, _: int = Depends(session)):
+        return {"removed": sum(rt.photos.remove(i) for i in body.ids)}
 
     # ---- push ----
 

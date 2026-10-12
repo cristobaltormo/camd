@@ -1,9 +1,10 @@
-import { api, b64uToBuf, chip, confirmDialog, deviceLabel, fmtBytes, fmtUptime, h, icon, isIOS, isStandalone, toast } from "./lib.js";
+import { api, b64uToBuf, chip, confirmDialog, deviceLabel, fmtBytes, fmtUptime, h, icon, isIOS, isStandalone, prefs, toast } from "./lib.js";
 
 const SECTIONS = [
   ["alerts", "Avisos", "bell"],
   ["detection", "Detección", "sliders"],
   ["recording", "Grabación", "film"],
+  ["captures", "Capturas", "snap"],
   ["presence", "Presencia", "presence"],
   ["camera", "Cámara", "camera"],
   ["appearance", "Apariencia", "palette"],
@@ -184,14 +185,32 @@ export function mount(el, navigate, ctx) {
     ];
   }
 
+  function capturesSection() {
+    const dest = prefs.photoDest;
+    const seg = h("div", { class: "seg", role: "group", "aria-label": "Destino de las fotos" }, [["ask", "Preguntar"], ["web", "En la web"], ["device", "En el dispositivo"]].map(([id, label]) =>
+      h("button", { class: dest === id ? "on" : "", text: label, "aria-pressed": String(dest === id), onclick: () => { prefs.photoDest = id; drawSection(); } })));
+    const clip = h("select", { class: "select", "aria-label": "Duración por defecto del clip", onchange: (e) => { prefs.clipSeconds = Number(e.target.value); } },
+      [[15, "15 segundos"], [30, "30 segundos"], [60, "1 minuto"], [120, "2 minutos"], [300, "5 minutos"]].map(([v, t]) => h("option", { value: v, text: t, selected: v === prefs.clipSeconds })));
+    const u = st.status.storage;
+    return [
+      card("Fotos",
+        h("div", { class: "setting column" }, h("div", { class: "setting-text" }, h("div", { class: "setting-label", text: "Dónde se guardan" }), h("div", { class: "muted", text: "En la web quedan en la galería de Fotos del servidor; en el dispositivo se descargan o se comparten desde el móvil." })), seg),
+        h("div", { class: "setting" }, h("div", { class: "setting-text" }, h("div", { class: "setting-label", text: "Guardadas en la web" }), h("div", { class: "muted", text: `${u.photos} fotos · ${fmtBytes(u.photo_bytes)}` })), h("a", { class: "btn small", href: "#/photos", text: "Abrir" }))),
+      card("Clips",
+        setting("Duración por defecto", "Los clips manuales se guardan en Eventos y no se borran solos", clip)),
+      card(null, h("div", { class: "muted", text: "Estas preferencias se guardan solo en este dispositivo." })),
+    ];
+  }
+
   function storageBlock() {
     const used = st.status.storage;
     const pct = Math.min(100, Math.round((used.bytes / (st.draft.max_disk_gb * 1024 ** 3)) * 100));
     const fill = h("div", { class: "fill" + (pct > 85 ? " warn" : "") });
     fill.style.width = pct + "%";
     return h("div", { class: "kv-storage" },
-      h("div", { class: "row" }, h("span", { class: "muted", text: "En uso" }), h("span", { text: `${fmtBytes(used.bytes)} · ${used.events} eventos` })),
-      h("div", { class: "bar" }, fill));
+      h("div", { class: "row" }, h("span", { class: "muted", text: "Eventos" }), h("span", { text: `${fmtBytes(used.bytes)} · ${used.events}` })),
+      h("div", { class: "bar" }, fill),
+      h("div", { class: "row spaced" }, h("span", { class: "muted", text: "Fotos" }), h("span", { text: `${fmtBytes(used.photo_bytes)} · ${used.photos}` })));
   }
 
   function presenceSection() {
@@ -268,7 +287,7 @@ export function mount(el, navigate, ctx) {
       location.reload();
     } });
 
-    const keys = [["1", "En vivo"], ["2", "Eventos"], ["3", "Ajustes"], ["F", "Pantalla completa (En vivo)"], ["S", "Guardar foto (En vivo)"], ["Esc", "Cerrar"], ["← →", "Evento anterior o siguiente"]];
+    const keys = [["1", "En vivo"], ["2", "Eventos"], ["3", "Fotos"], ["4", "Ajustes"], ["F", "Pantalla completa (En vivo)"], ["S", "Guardar foto (En vivo)"], ["Esc", "Cerrar"], ["← →", "Evento anterior o siguiente"]];
     return [
       card("Instalación", installRow),
       card("Mantenimiento", setting("Actualizaciones", null, check), setting("Caché local", "Útil si la aplicación se queda con datos viejos", clear), h("div", { class: "row end" }, version)),
@@ -336,7 +355,7 @@ export function mount(el, navigate, ctx) {
     ];
   }
 
-  const RENDER = { alerts: alertsSection, detection: detectionSection, recording: recordingSection, presence: presenceSection, camera: cameraSection, appearance: appearanceSection, app: appSection, system: systemSection, security: securitySection };
+  const RENDER = { alerts: alertsSection, detection: detectionSection, recording: recordingSection, captures: capturesSection, presence: presenceSection, camera: cameraSection, appearance: appearanceSection, app: appSection, system: systemSection, security: securitySection };
 
   function drawNav() {
     nav.replaceChildren(...SECTIONS.map(([id, label, ic]) =>

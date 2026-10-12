@@ -1,0 +1,165 @@
+// Drives headless Chromium over the DevTools protocol against tools/ui-mock.py.
+// Run: python tools/ui-mock.py & node --experimental-websocket tools/ui-e2e.mjs
+import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const BASE = process.env.UI_BASE || "http://127.0.0.1:8199";
+const PORT = 9333;
+const profile = mkdtempSync(join(tmpdir(), "ui-e2e-"));
+const chrome = spawn("chromium", ["--headless=new", "--no-sandbox", "--disable-gpu", `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`, "--window-size=1280,900", "about:blank"], { stdio: "ignore" });
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const problems = [];
+
+async function connect() {
+  for (let i = 0; i < 60; i++) {
+    try {
+      const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
+      const page = list.find((t) => t.type === "page");
+      if (page) return page.webSocketDebuggerUrl;
+    } catch (_) {}
+    await sleep(250);
+  }
+  throw new Error("chromium did not start");
+}
+
+const ws = new WebSocket(await connect());
+await new Promise((r) => ws.addEventListener("open", r));
+let nextId = 0;
+const waiting = new Map();
+ws.addEventListener("message", (m) => {
+  const msg = JSON.parse(m.data);
+  if (msg.id && waiting.has(msg.id)) { waiting.get(msg.id)(msg); waiting.delete(msg.id); return; }
+  if (msg.method === "Runtime.exceptionThrown") problems.push("exception: " + (msg.params.exceptionDetails.exception?.description || msg.params.exceptionDetails.text));
+  if (msg.method === "Runtime.consoleAPICalled" && msg.params.type === "error") problems.push("console.error: " + msg.params.args.map((a) => a.value ?? a.description).join(" "));
+});
+const send = (method, params = {}) => new Promise((resolve) => { const id = ++nextId; waiting.set(id, resolve); ws.send(JSON.stringify({ id, method, params })); });
+await send("Runtime.enable");
+await send("Page.enable");
+
+const js = async (expression) => {
+  const r = await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
+  if (r.result.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description || "evaluate failed");
+  return r.result.result.value;
+};
+const waitFor = async (expression, label, ms = 8000) => {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    try { if (await js(expression)) return; } catch (_) {}
+    await sleep(100);
+  }
+  throw new Error("timeout waiting for: " + label);
+};
+const goto = async (hash) => { await send("Page.navigate", { url: `${BASE}/#${hash}` }); await sleep(300); await js("location.reload()").catch(() => {}); await sleep(500); };
+const click = (selector) => js(`document.querySelector(${JSON.stringify(selector)}).click()`);
+const clickText = (selector, text) => js(`[...document.querySelectorAll(${JSON.stringify(selector)})].find((b) => b.textContent.includes(${JSON.stringify(text)})).click()`);
+const mockStatus = () => fetch(`${BASE}/api/status`).then((r) => r.json());
+const count = (selector) => js(`document.querySelectorAll(${JSON.stringify(selector)}).length`);
+
+const tests = {
+  async "live view starts streaming"() {
+    await goto("/live");
+    await waitFor("document.querySelector('.badge.live') && !document.querySelector('.badge.live').hidden", "live badge");
+  },
+  async "privacy on shows the standby state and keeps the switch"() {
+    await click('input[aria-label="Privacidad"]');
+    await waitFor("document.querySelector('.overlay')?.textContent.includes('apagada por privacidad')", "standby overlay");
+    await sleep(4600);
+    if (!(await js("document.querySelector('input[aria-label=\"Privacidad\"]').checked"))) throw new Error("switch reset by polling");
+  },
+  async "privacy off wakes the camera and resumes the stream without reloading"() {
+    await click('input[aria-label="Privacidad"]');
+    await waitFor("document.querySelector('.overlay')?.textContent.includes('Encendiendo')", "waking overlay", 4000);
+    await waitFor("document.querySelector('.badge.live') && !document.querySelector('.badge.live').hidden", "stream back", 15000);
+    if (await js("document.querySelector('input[aria-label=\"Privacidad\"]').checked")) throw new Error("switch still on");
+  },
+  async "rapid privacy toggling ends consistent with the server"() {
+    for (let i = 0; i < 3; i++) { await click('input[aria-label="Privacidad"]'); await sleep(250); }
+    await sleep(6000);
+    const server = (await mockStatus()).privacy;
+    const ui = await js("document.querySelector('input[aria-label=\"Privacidad\"]').checked");
+    if (server !== ui) throw new Error(`server ${server} vs ui ${ui}`);
+    if (server) { await click('input[aria-label="Privacidad"]'); await sleep(500); }
+    await waitFor("document.querySelector('.badge.live') && !document.querySelector('.badge.live').hidden", "stream back", 15000);
+  },
+  async "manual clip starts and stops"() {
+    await clickText(".btn.action", "Clip");
+    await waitFor("[...document.querySelectorAll('.btn.action')].some((b) => b.textContent.includes('Parar'))", "stop label");
+    await clickText(".btn.action", "Parar");
+    await waitFor("[...document.querySelectorAll('.btn.action')].some((b) => b.textContent.trim() === 'Clip')", "idle label");
+  },
+  async "photo asks where to save and stores on the web"() {
+    await js("localStorage.removeItem('cam.photoDest')");
+    const before = (await fetch(`${BASE}/api/photos`).then((r) => r.json())).photos.length;
+    await clickText(".btn.action", "Foto");
+    await waitFor("document.querySelectorAll('.choice').length === 2", "chooser");
+    await click(".choice");
+    await waitFor("[...document.querySelectorAll('.toast')].some((t) => t.textContent.includes('Foto guardada'))", "toast");
+    const after = (await fetch(`${BASE}/api/photos`).then((r) => r.json())).photos.length;
+    if (after !== before + 1) throw new Error("photo not stored");
+  },
+  async "events list, delete from the player and protect"() {
+    await goto("/events");
+    await waitFor("document.querySelectorAll('.event').length === 6", "6 events");
+    await goto("/events/3");
+    await waitFor("document.querySelector('.sheet')", "player");
+    await clickText(".sheet .btn", "Borrar");
+    await waitFor("document.querySelector('.center-modal')", "confirm");
+    await click(".center-modal .danger-solid");
+    await waitFor("document.querySelectorAll('.event').length === 5", "list redrawn");
+    const ids = (await fetch(`${BASE}/api/events`).then((r) => r.json())).events.map((e) => e.id);
+    if (ids.includes(3)) throw new Error("event still on server");
+    await waitFor("!document.querySelector('.sheet') || location.hash.startsWith('#/events/')", "navigated");
+    await goto("/events/1");
+    await waitFor("document.querySelector('.sheet')", "player 1");
+    await clickText(".sheet .btn", "Proteger");
+    await waitFor("[...document.querySelectorAll('.sheet .btn')].some((b) => b.textContent.includes('Protegido'))", "protected label");
+  },
+  async "bulk select and delete events"() {
+    await goto("/events");
+    await waitFor("document.querySelectorAll('.event').length >= 5", "events");
+    await clickText(".page-head .btn", "Seleccionar");
+    await js("document.querySelectorAll('.event')[0].click(); document.querySelectorAll('.event')[1].click()");
+    await waitFor("document.querySelector('.bulkbar')?.textContent.includes('2 seleccionados')", "two picked");
+    await clickText(".bulkbar .btn", "Borrar");
+    await click(".center-modal .danger-solid");
+    await waitFor("document.querySelectorAll('.event').length === 3", "3 left");
+  },
+  async "photos gallery shows and deletes"() {
+    await goto("/photos");
+    await waitFor("document.querySelectorAll('.event.photo').length === 4", "4 photos");
+    await goto("/photos/1");
+    await waitFor("document.querySelector('.viewer-img')", "viewer");
+    await clickText(".sheet .btn", "Borrar");
+    await click(".center-modal .danger-solid");
+    await waitFor("document.querySelectorAll('.event.photo').length === 3", "3 photos");
+  },
+  async "settings shows the save bar only with changes"() {
+    await goto("/settings/alerts");
+    await waitFor("document.querySelector('.settings-body .switch')", "settings");
+    if (!(await js("document.querySelector('.savebar').hidden"))) throw new Error("save bar visible without changes");
+    await click(".settings-body .switch");
+    await waitFor("!document.querySelector('.savebar').hidden", "save bar");
+    await clickText(".savebar .btn", "Descartar");
+    await waitFor("document.querySelector('.savebar').hidden", "save bar hidden");
+  },
+  async "every section renders"() {
+    for (const id of ["alerts", "detection", "recording", "captures", "presence", "camera", "appearance", "app", "system", "security"]) {
+      await goto(`/settings/${id}`);
+      await waitFor("document.querySelectorAll('.settings-body .panel').length > 0", `section ${id}`);
+    }
+  },
+};
+
+let failed = 0;
+for (const [name, fn] of Object.entries(tests)) {
+  try { await fn(); console.log("PASS", name); } catch (e) { failed++; console.log("FAIL", name, "-", e.message); }
+}
+if (problems.length) { failed++; console.log("FAIL page errors:\n  " + [...new Set(problems)].join("\n  ")); } else console.log("PASS no page errors");
+
+ws.close();
+chrome.kill();
+rmSync(profile, { recursive: true, force: true });
+process.exit(failed ? 1 : 0);

@@ -6,6 +6,7 @@ const root = document.getElementById("app");
 const VIEWS = {
   live: { label: "En vivo", load: () => import("./live.js") },
   events: { label: "Eventos", load: () => import("./events.js") },
+  photos: { label: "Fotos", load: () => import("./photos.js") },
   settings: { label: "Ajustes", load: () => import("./settings.js") },
 };
 
@@ -154,7 +155,7 @@ function enterApp() {
   window.addEventListener("cam:seen", () => shell && shell.setBadge(0));
   document.addEventListener("keydown", (e) => {
     if (e.target.matches("input, select, textarea") || e.metaKey || e.ctrlKey || e.altKey || document.querySelector(".modal")) return;
-    const target = { 1: "live", 2: "events", 3: "settings" }[e.key];
+    const target = { 1: "live", 2: "events", 3: "photos", 4: "settings" }[e.key];
     if (target) navigate(`/${target}`);
   });
   if (!store.get("eventsSeen", 0)) store.set("eventsSeen", Date.now() / 1000);
@@ -178,6 +179,17 @@ async function start() {
   }
   enterApp();
 }
+
+let lastReport = 0;
+function report(reason) {
+  if (reason instanceof LoginRequired) return;
+  console.error(reason);
+  if (Date.now() - lastReport < 5000) return;
+  lastReport = Date.now();
+  toast("Algo ha fallado. Si se repite, recarga la aplicación.", "bad");
+}
+window.addEventListener("unhandledrejection", (e) => report(e.reason));
+window.addEventListener("error", (e) => report(e.error || e.message));
 
 on("login", () => location.reload());
 registerWorker();
