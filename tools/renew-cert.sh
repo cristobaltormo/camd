@@ -2,6 +2,7 @@
 # Renew the cam.cristobal.cc certificate (DNS-01 via Cloudflare) and push it to LXC 131.
 # Runs weekly from cron on the Proxmox host; lego only renews when fewer than 30 days remain.
 set -uo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 LEGO_DIR=/var/lib/lego
 CERT=$LEGO_DIR/.lego/certificates/cam.cristobal.cc
@@ -18,8 +19,8 @@ set -a; . /root/cerebro/secrets.env; set +a
 export CLOUDFLARE_DNS_API_TOKEN="$CLOUDFLARE_API_TOKEN"
 
 cd "$LEGO_DIR" || fail "no existe $LEGO_DIR"
-lego-official renew -m info@cristobaltormo.com -d cam.cristobal.cc --dns cloudflare \
-  --dns.resolvers 1.1.1.1:53,8.8.8.8:53 --days 30 >/tmp/renew-cert.log 2>&1 || fail "lego no pudo renovar (ver /tmp/renew-cert.log)"
+/usr/local/bin/lego-official run -a -m info@cristobaltormo.com -d cam.cristobal.cc --dns cloudflare \
+  --dns.resolvers 1.1.1.1:53,8.8.8.8:53 --renew-days 30 --no-random-sleep >/tmp/renew-cert.log 2>&1 || fail "lego no pudo renovar (ver /tmp/renew-cert.log)"
 
 new=$(sha256sum "$CERT.crt" | cut -d' ' -f1)
 old=$(pct exec $ID -- sha256sum $DEST/fullchain.pem 2>/dev/null | cut -d' ' -f1)
