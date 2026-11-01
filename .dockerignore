@@ -1,0 +1,9 @@
+.git
+.claude
+.venv
+firmware
+docs
+**/__pycache__
+**/.pytest_cache
+server/tests
+server/webtests
