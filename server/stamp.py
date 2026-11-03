@@ -6,7 +6,7 @@ from pathlib import Path
 ASSET = re.compile(r"((?:\./[a-z]+\.js)|(?:/style\.css)|(?:/theme\.js)|(?:/js/main\.js))(\?v=[0-9a-z.]+)?(?=[\"'])")
 CACHE = re.compile(r'const CACHE = "cam-shell-[0-9a-z.]+";')
 BUILD = re.compile(r'export const BUILD = "[0-9a-z.]+";')
-BINARY_SUFFIXES = {".css", ".webmanifest", ".svg", ".png"}
+BINARY_SUFFIXES = {".css", ".webmanifest", ".svg", ".png", ".woff2"}
 
 
 def strip(text: str) -> str:
