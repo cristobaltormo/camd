@@ -1,4 +1,4 @@
-import { api, busy, confirmDialog, emptyState, fmtAgo, fmtDay, fmtDur, fmtTime, h, icon, labelName, saveToDevice, store, toast } from "./lib.js";
+import { api, busy, confirmDialog, detectionBox, emptyState, fmtAgo, fmtDay, fmtDur, fmtTime, h, icon, labelName, saveToDevice, store, toast } from "./lib.js";
 import { count, t } from "./text.js";
 
 const PAGE = 60;
@@ -160,12 +160,7 @@ export function mount(el, navigate) {
   }));
 
   function overlayBoxes(detections) {
-    return h("div", { class: "boxes" }, detections.map((item) => {
-      const [x, y, w, hh] = item.box;
-      const frame = h("div", { class: "box" }, h("span", { text: `${labelName(item.label)} ${Math.round(item.confidence * 100)}%` }));
-      Object.assign(frame.style, { left: x * 100 + "%", top: y * 100 + "%", width: w * 100 + "%", height: hh * 100 + "%" });
-      return frame;
-    }));
+    return h("div", { class: "boxes" }, detections.map(detectionBox));
   }
 
   function openPlayer(id) {
@@ -224,6 +219,9 @@ export function mount(el, navigate) {
     const video = h("video", { controls: true, playsinline: true, autoplay: true, preload: "metadata", src: `/api/events/${id}/clip`, poster: `/api/events/${id}/thumb` });
     video.addEventListener("error", () => toast(t("This video could not be loaded"), "bad"));
     const stage = h("div", { class: "player" }, video, ev && ev.detections.length ? overlayBoxes(ev.detections) : null);
+    const poster = new Image();
+    poster.addEventListener("load", () => stage.style.setProperty("--ratio", String(poster.naturalWidth / poster.naturalHeight)));
+    poster.src = `/api/events/${id}/thumb`;
     video.addEventListener("playing", () => stage.querySelector(".boxes")?.remove(), { once: true });
 
     const subtitle = ev ? [ev.kind === "manual" ? t("Manual clip") : null, fmtDur(ev.duration), fmtAgo(ev.start)].filter(Boolean).join(" · ") : "";

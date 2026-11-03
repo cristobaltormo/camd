@@ -1,5 +1,5 @@
 (function () {
-  var ACCENTS = { blue: "#3b72f0", green: "#2fb67c", violet: "#8b5cf6", orange: "#e8873a", pink: "#e0489b" };
+  var ACCENTS = { blue: "#4c82f7", green: "#2fb67c", violet: "#8b5cf6", orange: "#e8873a", pink: "#e0489b" };
   var dark = window.matchMedia("(prefers-color-scheme: dark)");
 
   function read(key, fallback) {
@@ -14,7 +14,7 @@
     var accent = ACCENTS[read("cam.accent", "blue")] || ACCENTS.blue;
     root.style.setProperty("--accent", accent);
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", resolved === "dark" ? "#14161b" : "#f4f5f7");
+    if (meta) meta.setAttribute("content", resolved === "dark" ? "#0b0c0f" : "#f6f6f7");
   }
 
   function set(key, value) {
