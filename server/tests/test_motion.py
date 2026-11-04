@@ -1,5 +1,6 @@
-from camd.motion import WARMUP_FRAMES, MotionDetector, MotionSettings
 from frames import jpeg, scene
+
+from camd.motion import WARMUP_FRAMES, MotionDetector, MotionSettings
 
 
 def warmed(detector: MotionDetector, brightness: int = 90) -> None:
@@ -48,3 +49,18 @@ def test_background_adapts_to_permanent_change():
     moved = jpeg(scene(blob=True))
     results = [d.process(moved).motion for _ in range(200)]
     assert results[0] and not results[-1]
+
+
+def test_slow_exposure_drift_is_not_motion():
+    d = MotionDetector()
+    warmed(d, brightness=90)
+    for step in range(1, 12):
+        assert not d.process(jpeg(scene(brightness=90 + step * 2))).motion
+
+
+def test_partial_light_still_counts_as_change_when_it_is_large():
+    d = MotionDetector()
+    warmed(d)
+    img = scene()
+    img[150:450, 300:700] = 230
+    assert d.process(jpeg(img)).motion

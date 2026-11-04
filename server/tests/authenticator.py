@@ -1,4 +1,3 @@
-"""Minimal software WebAuthn authenticator (ES256, 'none' attestation) for tests."""
 import hashlib
 import json
 import os
@@ -7,7 +6,6 @@ import struct
 import cbor2
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
-
 from webauthn.helpers import bytes_to_base64url as b64u
 
 

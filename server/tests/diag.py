@@ -1,4 +1,5 @@
 """Per-second brightness / motion score trace from the real camera (run on the LXC, service stopped)."""
+
 import os
 import sys
 import time
@@ -26,7 +27,10 @@ def on_frame(ts, jpeg):
     bucket["motion"] += r.motion
     if ts - last >= 2:
         n = max(bucket["n"], 1)
-        print(f"t={ts % 1000:6.0f} fps={n / 2:4.1f} bright={bucket['bright'] / n:6.1f} maxscore={bucket['score']:.3f} motionframes={bucket['motion']}", flush=True)
+        print(
+            f"t={ts % 1000:6.0f} fps={n / 2:4.1f} bright={bucket['bright'] / n:6.1f} maxscore={bucket['score']:.3f} motionframes={bucket['motion']}",
+            flush=True,
+        )
         bucket.update(n=0, bright=0.0, score=0.0, motion=0)
         last = ts
 

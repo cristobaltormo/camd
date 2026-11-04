@@ -1,5 +1,5 @@
-const CACHE = "cam-shell-5fdcb5d04d";
-const SHELL = ["/", "/style.css?v=5fdcb5d04d", "/theme.js?v=5fdcb5d04d", "/icon.svg", "/icon-192.png", "/js/main.js?v=5fdcb5d04d", "/js/lib.js", "/js/auth.js", "/js/live.js", "/js/events.js", "/js/photos.js", "/js/settings.js"];
+const CACHE = "cam-shell-dev";
+const SHELL = ["/", "/style.css", "/theme.js", "/icon.svg", "/icon-192.png", "/js/main.js", "/js/lib.js", "/js/text.js", "/js/es.js", "/js/auth.js", "/js/live.js", "/js/events.js", "/js/photos.js", "/js/settings.js"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}).then(() => self.skipWaiting()));
@@ -33,11 +33,11 @@ self.addEventListener("push", (event) => {
   try {
     data = event.data ? event.data.json() : {};
   } catch (_) {
-    data = { title: "Habitación", body: event.data ? event.data.text() : "" };
+    data = { title: "Camera", body: event.data ? event.data.text() : "" };
   }
   if (self.navigator && self.navigator.setAppBadge) self.navigator.setAppBadge().catch(() => {});
   event.waitUntil(
-    self.registration.showNotification(data.title || "Habitación", {
+    self.registration.showNotification(data.title || "Camera", {
       body: data.body || "",
       tag: data.tag || "camd",
       renotify: true,

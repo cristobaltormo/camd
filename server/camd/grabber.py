@@ -1,4 +1,5 @@
 import http.client
+import json
 import logging
 import threading
 import time
@@ -9,31 +10,75 @@ log = logging.getLogger("camd.grabber")
 FrameCallback = Callable[[float, bytes], None]
 
 RETRY_STEPS = (1.0, 2.0, 3.0, 5.0, 10.0, 20.0, 30.0)
+ONLINE_WINDOW_S = 10.0
+MAX_FRAME_BYTES = 2_000_000
+FPS_SMOOTHING = 0.1
 
 
 def retry_delay(failures: int) -> float:
-    """Short retries right after a drop, then one attempt every 30 s while the camera stays away."""
     return RETRY_STEPS[min(max(failures, 1), len(RETRY_STEPS)) - 1]
 
 
-class Grabber(threading.Thread):
-    """Single consumer of the camera stream, fanning frames out to the pipeline and live viewers."""
-
-    def __init__(self, host: str, token: str, on_frame: FrameCallback, on_connect: Callable[[], None] | None = None):
-        super().__init__(daemon=True, name="grabber")
+class CameraClient:
+    def __init__(self, host: str, token: str, api_port: int = 80, stream_port: int = 81):
         self.host = host
-        self.token = token
+        self.api_port = api_port
+        self.stream_port = stream_port
+        self.headers = {"Authorization": f"Bearer {token}"}
+
+    def get(self, path: str, timeout: float = 10.0) -> tuple[int, bytes]:
+        conn = http.client.HTTPConnection(self.host, self.api_port, timeout=timeout)
+        try:
+            conn.request("GET", path, headers=self.headers)
+            response = conn.getresponse()
+            return response.status, response.read()
+        finally:
+            conn.close()
+
+    def set_standby(self, on: bool) -> bool:
+        try:
+            return self.get(f"/control?var=standby&val={int(on)}")[0] == 200
+        except OSError as exc:
+            log.warning("standby request failed: %s", exc)
+            return False
+
+    def apply_controls(self, controls: dict[str, int]) -> dict[str, bool]:
+        results = {}
+        for name, value in controls.items():
+            try:
+                results[name] = self.get(f"/control?var={name}&val={int(value)}")[0] == 200
+            except OSError as exc:
+                log.warning("control %s failed: %s", name, exc)
+                results[name] = False
+        return results
+
+    def status(self) -> dict | None:
+        try:
+            code, body = self.get("/status", timeout=5.0)
+            return json.loads(body) if code == 200 else None
+        except (OSError, ValueError):
+            return None
+
+    def open_stream(self) -> http.client.HTTPConnection:
+        return http.client.HTTPConnection(self.host, self.stream_port, timeout=6.0)
+
+
+class Grabber(threading.Thread):
+    def __init__(self, camera: CameraClient, on_frame: FrameCallback, on_connect: Callable[[], None] = lambda: None):
+        super().__init__(daemon=True, name="grabber")
+        self.camera = camera
         self.on_frame = on_frame
-        self.on_connect = on_connect or (lambda: None)
-        self._halt = threading.Event()
-        self._kick = threading.Event()
-        self._cond = threading.Condition()
-        self._latest: tuple[float, bytes] | None = None
-        self._seq = 0
-        self._standby = False
-        self._enabled = True
+        self.on_connect = on_connect
         self.failures = 0
         self.viewers = 0
+        self.fps = 0.0
+        self._halt = threading.Event()
+        self._kick = threading.Event()
+        self._frame_ready = threading.Condition()
+        self._latest: tuple[float, bytes] | None = None
+        self._sequence = 0
+        self._standby = False
+        self._enabled = True
 
     @property
     def latest(self) -> tuple[float, bytes] | None:
@@ -42,7 +87,7 @@ class Grabber(threading.Thread):
     @property
     def online(self) -> bool:
         latest = self._latest
-        return self._enabled and latest is not None and time.time() - latest[0] < 10
+        return self._enabled and latest is not None and time.time() - latest[0] < ONLINE_WINDOW_S
 
     @property
     def standby(self) -> bool:
@@ -59,67 +104,32 @@ class Grabber(threading.Thread):
             self._kick.set()
         else:
             self._latest = None
+            self.fps = 0.0
+
+    def set_standby(self, on: bool) -> bool:
+        if not self.camera.set_standby(on):
+            return False
+        self._standby = on
+        if on:
+            self._latest = None
+            self.fps = 0.0
+        else:
+            self._kick.set()
+        return True
 
     def stop(self) -> None:
         self._halt.set()
         self._kick.set()
 
-    def _headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self.token}"}
-
-    def set_standby(self, on: bool) -> bool:
-        try:
-            conn = http.client.HTTPConnection(self.host, 80, timeout=10)
-            conn.request("GET", f"/control?var=standby&val={int(on)}", headers=self._headers())
-            ok = conn.getresponse().status == 200
-            conn.close()
-        except OSError as exc:
-            log.warning("standby request failed: %s", exc)
-            return False
-        if ok:
-            self._standby = on
-            if on:
-                self._latest = None
-            else:
-                self._kick.set()
-        return ok
-
-    def apply_controls(self, controls: dict[str, int]) -> dict[str, bool]:
-        results = {}
-        for var, value in controls.items():
-            try:
-                conn = http.client.HTTPConnection(self.host, 80, timeout=10)
-                conn.request("GET", f"/control?var={var}&val={int(value)}", headers=self._headers())
-                results[var] = conn.getresponse().status == 200
-                conn.close()
-            except OSError as exc:
-                log.warning("control %s failed: %s", var, exc)
-                results[var] = False
-        return results
-
-    def fetch_status(self) -> dict | None:
-        import json
-
-        try:
-            conn = http.client.HTTPConnection(self.host, 80, timeout=5)
-            conn.request("GET", "/status", headers=self._headers())
-            resp = conn.getresponse()
-            body = resp.read()
-            conn.close()
-            return json.loads(body) if resp.status == 200 else None
-        except (OSError, ValueError):
-            return None
-
     def frames(self, max_wait: float = 5.0, first_wait: float = 15.0) -> Iterator[bytes]:
-        """Yield each new frame as it arrives; ends when no frame shows up for max_wait seconds (first_wait for the first one)."""
-        last = self._seq
+        last = self._sequence
         wait = first_wait
         while not self._halt.is_set():
-            with self._cond:
-                if not self._cond.wait_for(lambda: self._seq != last, timeout=wait):
+            with self._frame_ready:
+                if not self._frame_ready.wait_for(lambda seen=last: self._sequence != seen, timeout=wait):
                     return
                 wait = max_wait
-                last = self._seq
+                last = self._sequence
                 frame = self._latest
             if frame:
                 yield frame[1]
@@ -141,18 +151,21 @@ class Grabber(threading.Thread):
                 self._kick.clear()
                 self.failures = 0
 
+    def _streaming(self) -> bool:
+        return not self._halt.is_set() and not self._standby and self._enabled
+
     def _consume(self) -> None:
-        conn = http.client.HTTPConnection(self.host, 81, timeout=6)
+        conn = self.camera.open_stream()
         try:
-            conn.request("GET", "/stream", headers=self._headers())
-            resp = conn.getresponse()
-            if resp.status != 200:
-                raise ValueError(f"stream status {resp.status}")
+            conn.request("GET", "/stream", headers=self.camera.headers)
+            response = conn.getresponse()
+            if response.status != 200:
+                raise ValueError(f"stream status {response.status}")
             log.info("stream connected")
             threading.Thread(target=self.on_connect, daemon=True, name="on-connect").start()
-            while not self._halt.is_set() and not self._standby and self._enabled:
-                length = self._read_part_length(resp)
-                data = resp.read(length)
+            while self._streaming():
+                length = self._next_frame_length(response)
+                data = response.read(length)
                 if len(data) != length:
                     raise ValueError("short frame")
                 self._publish(time.time(), data)
@@ -160,16 +173,16 @@ class Grabber(threading.Thread):
             conn.close()
 
     @staticmethod
-    def _read_part_length(resp) -> int:
+    def _next_frame_length(response) -> int:
         while True:
-            line = resp.readline()
+            line = response.readline()
             if not line:
                 raise ValueError("stream closed")
             if line.strip() == b"--frame":
                 break
         length = None
         while True:
-            line = resp.readline()
+            line = response.readline()
             if not line:
                 raise ValueError("stream closed")
             line = line.strip()
@@ -177,15 +190,18 @@ class Grabber(threading.Thread):
                 break
             if line.lower().startswith(b"content-length:"):
                 length = int(line.split(b":", 1)[1])
-        if length is None or length <= 0 or length > 2_000_000:
+        if length is None or not 0 < length <= MAX_FRAME_BYTES:
             raise ValueError("bad frame length")
         return length
 
     def _publish(self, ts: float, data: bytes) -> None:
-        if not self._enabled or self._standby:
+        if not (self._enabled and not self._standby):
             return
-        with self._cond:
+        previous = self._latest
+        if previous is not None and ts > previous[0]:
+            self.fps += FPS_SMOOTHING * (1.0 / (ts - previous[0]) - self.fps)
+        with self._frame_ready:
             self._latest = (ts, data)
-            self._seq += 1
-            self._cond.notify_all()
+            self._sequence += 1
+            self._frame_ready.notify_all()
         self.on_frame(ts, data)

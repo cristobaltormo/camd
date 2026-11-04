@@ -1,3 +1,5 @@
+import { locale, t } from "./text.js";
+
 const svg = (body) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 
@@ -44,6 +46,8 @@ export const ICONS = {
   pinOn: svg('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" fill="currentColor"/>'),
   share: svg('<path d="M12 15V4M8 8l4-4 4 4M5 13v6h14v-6"/>'),
   cloud: svg('<path d="M7 18a4 4 0 01-.6-7.95A5.5 5.5 0 0117 9a4.5 4.5 0 01.5 9z"/>'),
+  scan: svg('<path d="M4 8V5a1 1 0 011-1h3M16 4h3a1 1 0 011 1v3M20 16v3a1 1 0 01-1 1h-3M8 20H5a1 1 0 01-1-1v-3"/><circle cx="12" cy="10" r="2.2"/><path d="M7.8 17c.6-2 2.2-3 4.2-3s3.6 1 4.2 3"/>'),
+  paw: svg('<circle cx="6.5" cy="11" r="1.7"/><circle cx="10" cy="6.5" r="1.7"/><circle cx="14" cy="6.5" r="1.7"/><circle cx="17.5" cy="11" r="1.7"/><path d="M12 12.5c-2.8 0-5 2.8-5 5 0 1.7 1.2 2.5 2.6 2.5 1 0 1.6-.5 2.4-.5s1.4.5 2.4.5c1.4 0 2.6-.8 2.6-2.5 0-2.2-2.2-5-5-5z"/>'),
   refresh: svg('<path d="M20 11a8 8 0 00-14-4.5L4 9M4 4v5h5M4 13a8 8 0 0014 4.5L20 15M20 20v-5h-5"/>'),
 };
 
@@ -99,9 +103,9 @@ export async function api(path, opts = {}) {
   try {
     res = await fetch(path, { ...init, redirect: "manual", signal: controller.signal });
   } catch (e) {
-    if (e.name === "AbortError") throw new Error("El servidor tarda demasiado en responder");
+    if (e.name === "AbortError") throw new Error(t("The server is taking too long to answer"));
     setOffline(true);
-    throw new Error("Sin conexión con el servidor");
+    throw new Error(t("No connection to the server"));
   } finally {
     clearTimeout(timer);
   }
@@ -117,19 +121,21 @@ export async function api(path, opts = {}) {
   if (!res.ok) {
     let detail = res.statusText;
     try { detail = (await res.json()).detail || detail; } catch (_) {}
-    throw new Error(typeof detail === "string" ? friendly(detail) : "Datos no válidos");
+    throw new Error(typeof detail === "string" ? friendly(detail) : t("Invalid data"));
   }
   return res.status === 204 ? null : res.json();
 }
 
 const MESSAGES = {
-  "camera did not answer": "La cámara no responde",
-  "camera not available": "La cámara no está disponible ahora",
-  "no frame": "La cámara no está enviando imagen",
-  "no clip in progress": "No hay ningún clip grabándose",
-  "too many attempts": "Demasiados intentos, espera un momento",
+  "camera did not answer": "The camera is not answering",
+  "camera not available": "The camera is not available right now",
+  "no frame": "The camera is not sending images",
+  "no clip in progress": "No clip is being recorded",
+  "too many attempts": "Too many attempts, wait a moment",
+  "login failed": "Sign-in failed",
+  "cannot remove the last way to sign in": "You cannot remove the last way to sign in",
 };
-const friendly = (detail) => MESSAGES[detail] || (/^photo limit/.test(detail) ? "Has llegado al límite de fotos guardadas" : detail);
+const friendly = (detail) => (MESSAGES[detail] ? t(MESSAGES[detail]) : /^photo limit/.test(detail) ? t("The photo limit has been reached") : detail);
 
 export const store = {
   get(key, fallback) {
@@ -148,39 +154,39 @@ export const b64uToBuf = (s) => {
 export const bufToB64u = (buf) =>
   btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
-export const fmtTime = (ts) => new Date(ts * 1000).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+export const fmtTime = (ts) => new Date(ts * 1000).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
 
 export function fmtDay(ts) {
   const d = new Date(ts * 1000);
   const today = new Date();
-  const y = new Date();
-  y.setDate(today.getDate() - 1);
-  if (d.toDateString() === today.toDateString()) return "Hoy";
-  if (d.toDateString() === y.toDateString()) return "Ayer";
-  const label = d.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return t("Today");
+  if (d.toDateString() === yesterday.toDateString()) return t("Yesterday");
+  const label = d.toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long" });
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 export function fmtDur(s) {
-  if (s === null || s === undefined) return "Grabando";
+  if (s === null || s === undefined) return t("Recording");
   if (s < 60) return `${Math.max(1, Math.round(s))} s`;
   return `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
 }
 
 export function fmtAgo(ts) {
   const s = Math.max(0, Date.now() / 1000 - ts);
-  if (s < 60) return "hace un momento";
-  if (s < 3600) return `hace ${Math.floor(s / 60)} min`;
-  if (s < 86400) return `hace ${Math.floor(s / 3600)} h`;
-  return `hace ${Math.floor(s / 86400)} d`;
+  if (s < 60) return t("just now");
+  if (s < 3600) return t("{n} min ago", { n: Math.floor(s / 60) });
+  if (s < 86400) return t("{n} h ago", { n: Math.floor(s / 3600) });
+  return t("{n} d ago", { n: Math.floor(s / 86400) });
 }
 
 export function fmtUptime(s) {
   if (!s) return "-";
   const d = Math.floor(s / 86400);
-  const hh = Math.floor((s % 86400) / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  return d ? `${d} d ${hh} h` : hh ? `${hh} h ${m} min` : `${m} min`;
+  const hours = Math.floor((s % 86400) / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+  return d ? `${d} d ${hours} h` : hours ? `${hours} h ${minutes} min` : `${minutes} min`;
 }
 
 export function fmtBytes(b) {
@@ -190,8 +196,8 @@ export function fmtBytes(b) {
 }
 
 export function deviceLabel(ua) {
-  if (!ua) return "Dispositivo desconocido";
-  const os = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : /Mac OS X/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : "Dispositivo";
+  if (!ua) return t("Unknown device");
+  const os = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : /Mac OS X/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : t("Device");
   const browser = /Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) || /CriOS/.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "";
   return browser ? `${os} · ${browser}` : os;
 }
@@ -221,7 +227,7 @@ export function confirmDialog(title, text, okLabel, danger) {
         h("h3", { text: title }),
         text ? h("p", { class: "muted", text }) : null,
         h("div", { class: "row end" },
-          h("button", { class: "btn", text: "Cancelar", onclick: () => done(false) }),
+          h("button", { class: "btn", text: t("Cancel"), onclick: () => done(false) }),
           h("button", { class: "btn " + (danger ? "danger-solid" : "primary"), text: okLabel, onclick: () => done(true) })
         )
       )
@@ -232,7 +238,7 @@ export function confirmDialog(title, text, okLabel, danger) {
   });
 }
 
-export const spinner = () => h("span", { class: "spinner", role: "status", "aria-label": "Cargando" });
+export const spinner = () => h("span", { class: "spinner", role: "status", "aria-label": t("Loading") });
 
 export function chip(text, tone) {
   return h("span", { class: "chip" }, h("span", { class: "dot " + (tone || "") }), text);
@@ -256,7 +262,7 @@ export async function saveToDevice(source, filename) {
   let blob = source;
   if (typeof source === "string") {
     const res = await fetch(source, { credentials: "same-origin" });
-    if (!res.ok) throw new Error("No se pudo descargar el archivo");
+    if (!res.ok) throw new Error(t("The file could not be downloaded"));
     blob = await res.blob();
   }
   const file = new File([blob], filename, { type: blob.type });
@@ -299,8 +305,8 @@ export function choiceDialog(title, text, choices, remember) {
         text ? h("p", { class: "muted", text }) : null,
         h("div", { class: "choices" }, choices.map(([id, label, hint, ic]) =>
           h("button", { class: "choice", onclick: () => done(id) }, icon(ic), h("span", {}, h("strong", { text: label }), h("span", { class: "muted", text: hint }))))),
-        remember ? h("label", { class: "remember", for: "remember-choice" }, rememberBox, h("span", { text: "Recordar mi elección" })) : null,
-        h("div", { class: "row end" }, h("button", { class: "btn", text: "Cancelar", onclick: () => done(null) }))
+        remember ? h("label", { class: "remember", for: "remember-choice" }, rememberBox, h("span", { text: t("Remember my choice") })) : null,
+        h("div", { class: "row end" }, h("button", { class: "btn", text: t("Cancel"), onclick: () => done(null) }))
       )
     );
     document.addEventListener("keydown", onKey);
@@ -309,7 +315,12 @@ export function choiceDialog(title, text, choices, remember) {
 }
 
 export function cameraState(cam) {
-  if (cam.enabled === false) return { text: "Desactivada", tone: "warn" };
-  if (cam.standby) return { text: "Apagada (privacidad)", tone: "warn" };
-  return cam.online ? { text: "Conectada", tone: "ok" } : { text: "Sin señal", tone: "bad" };
+  if (cam.enabled === false) return { text: t("Disabled"), tone: "warn" };
+  if (cam.standby) return { text: t("Off (privacy)"), tone: "warn" };
+  return cam.online ? { text: t("Connected"), tone: "ok" } : { text: t("No signal"), tone: "bad" };
+}
+
+export function labelName(label) {
+  const translated = t(`label:${label}`);
+  return translated === `label:${label}` ? label.charAt(0).toUpperCase() + label.slice(1) : translated;
 }

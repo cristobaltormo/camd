@@ -330,3 +330,18 @@ kbd { font: 600 12px/1 ui-monospace, Menlo, monospace; padding: 5px 8px; border-
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ---------- object detection ---------- */
+.boxes { position: absolute; inset: 0; pointer-events: none; }
+.box { position: absolute; border: 2px solid var(--accent); border-radius: 6px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .35); }
+.box span { position: absolute; left: -2px; top: -22px; padding: 1px 7px; font-size: 11.5px; font-weight: 600; background: var(--accent); color: #fff; border-radius: 6px 6px 6px 0; white-space: nowrap; }
+.player { position: relative; }
+.player video { width: 100%; display: block; border-radius: 12px; background: #000; }
+.tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 6px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11.5px; font-weight: 600; }
+.tag .ico { width: 13px; height: 13px; }
+.event .thumb .tag { position: absolute; left: 6px; top: 6px; }
+.checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.check { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); cursor: pointer; }
+.check input { accent-color: var(--accent); width: 16px; height: 16px; }
+.more-labels summary { cursor: pointer; color: var(--muted); padding: 6px 0 10px; }
+.more-labels[open] summary { color: var(--text); }

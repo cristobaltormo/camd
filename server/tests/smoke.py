@@ -1,4 +1,5 @@
 """Live smoke test against the real camera with a throwaway data dir. Run on the LXC with the service stopped."""
+
 import os
 import resource
 import sys
@@ -9,9 +10,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from authenticator import SoftAuthenticator
 from fastapi.testclient import TestClient
 
-from authenticator import SoftAuthenticator
 from camd.app import create_app
 from camd.config import Config
 
@@ -52,7 +53,7 @@ with TestClient(app, base_url=ORIGIN) as client:
     print(f"cpu={(cpu1.ru_utime + cpu1.ru_stime - cpu0.ru_utime - cpu0.ru_stime) / elapsed * 100:.0f}% of one core")
     print(f"snapshot={snap.status_code} {len(snap.content)} bytes")
     print(f"motion_polls={motion_frames} camera={status['camera']} armed={status['armed']} reason={status['reason']}")
-    print(f"privacy off/on:", end=" ")
+    print("privacy off/on:", end=" ")
     print(client.post("/api/privacy", json={"on": True}, headers=H).status_code, end=" ")
     time.sleep(1)
     print(client.get("/api/status").json()["camera"]["standby"], end=" ")

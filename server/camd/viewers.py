@@ -2,8 +2,6 @@ import threading
 
 
 class ViewerPool:
-    """Tracks open live streams; a new one past the limit evicts the oldest so a stuck connection never locks anyone out."""
-
     def __init__(self, limit: int):
         self.limit = limit
         self._open: list[threading.Event] = []

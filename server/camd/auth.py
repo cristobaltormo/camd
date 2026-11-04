@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import secrets
 import threading
 import time
@@ -26,8 +27,11 @@ from .db import Database
 SESSION_TTL = 30 * 86400
 ENROLL_TTL = 600
 CHALLENGE_TTL = 300
+SEEN_REFRESH_S = 60
 USER_ID = b"owner"
-USER_NAME = "cristobal"
+MIN_PASSWORD_LENGTH = 10
+SCRYPT = {"n": 2**14, "r": 8, "p": 1, "dklen": 32}
+DUMMY_SALT = b"\x00" * 16
 
 
 class AuthError(Exception):
@@ -44,6 +48,8 @@ class RateLimiter:
     def allow(self, key: str) -> bool:
         now = time.time()
         with self._lock:
+            for stale in [k for k, hits in self._hits.items() if hits and now - hits[-1] > self.window]:
+                del self._hits[stale]
             hits = self._hits[key]
             while hits and now - hits[0] > self.window:
                 hits.popleft()
@@ -57,9 +63,22 @@ def _hash(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-class Auth:
-    """Passkey-only login for a single owner, with server-side revocable sessions."""
+def hash_password(password: str, salt: bytes | None = None) -> str:
+    salt = salt or secrets.token_bytes(16)
+    return f"scrypt${salt.hex()}${hashlib.scrypt(password.encode(), salt=salt, **SCRYPT).hex()}"
 
+
+def check_password(password: str, stored: str | None) -> bool:
+    try:
+        _, salt_hex, digest_hex = (stored or "").split("$")
+        salt, expected = bytes.fromhex(salt_hex), bytes.fromhex(digest_hex)
+    except ValueError:
+        salt, expected = DUMMY_SALT, b""
+    actual = hashlib.scrypt(password.encode(), salt=salt, **SCRYPT)
+    return bool(expected) and hmac.compare_digest(actual, expected)
+
+
+class Auth:
     def __init__(self, cfg: Config, db: Database):
         self.cfg = cfg
         self.db = db
@@ -83,12 +102,23 @@ class Auth:
     def has_credentials(self) -> bool:
         return self.db.one("SELECT 1 FROM credentials LIMIT 1") is not None
 
+    def has_password(self) -> bool:
+        return self.db.get_setting("password_hash") is not None
+
+    def set_password(self, password: str) -> None:
+        if len(password) < MIN_PASSWORD_LENGTH:
+            raise AuthError(f"password must have at least {MIN_PASSWORD_LENGTH} characters")
+        self.db.set_setting("password_hash", hash_password(password))
+
+    def login_password(self, password: str, user_agent: str) -> str:
+        if not check_password(password, self.db.get_setting("password_hash")):
+            raise AuthError("wrong password")
+        return self.create_session(user_agent)
+
     def new_enroll_code(self) -> str:
         code = secrets.token_hex(4)
         self.db.execute("DELETE FROM enroll_codes WHERE expires < ?", (time.time(),))
-        self.db.execute(
-            "INSERT INTO enroll_codes(code_hash, expires) VALUES(?, ?)", (_hash(code), time.time() + ENROLL_TTL)
-        )
+        self.db.execute("INSERT INTO enroll_codes(code_hash, expires) VALUES(?, ?)", (_hash(code), time.time() + ENROLL_TTL))
         return code
 
     def _check_code(self, code: str) -> None:
@@ -98,15 +128,12 @@ class Auth:
 
     def registration_options(self, code: str) -> str:
         self._check_code(code)
-        existing = [
-            PublicKeyCredentialDescriptor(id=base64url_to_bytes(r["id"]))
-            for r in self.db.query("SELECT id FROM credentials")
-        ]
+        existing = [PublicKeyCredentialDescriptor(id=base64url_to_bytes(r["id"])) for r in self.db.query("SELECT id FROM credentials")]
         options = generate_registration_options(
             rp_id=self.cfg.rp_id,
-            rp_name="Habitacion",
+            rp_name=self.cfg.site_name,
             user_id=USER_ID,
-            user_name=USER_NAME,
+            user_name=self.cfg.site_name,
             exclude_credentials=existing,
             authenticator_selection=AuthenticatorSelectionCriteria(
                 resident_key=ResidentKeyRequirement.PREFERRED,
@@ -143,10 +170,7 @@ class Auth:
         return self.create_session(user_agent)
 
     def login_options(self) -> tuple[str, str]:
-        creds = [
-            PublicKeyCredentialDescriptor(id=base64url_to_bytes(r["id"]))
-            for r in self.db.query("SELECT id FROM credentials")
-        ]
+        creds = [PublicKeyCredentialDescriptor(id=base64url_to_bytes(r["id"])) for r in self.db.query("SELECT id FROM credentials")]
         if not creds:
             raise AuthError("no credentials enrolled")
         options = generate_authentication_options(
@@ -191,10 +215,12 @@ class Auth:
     def check_session(self, token: str | None) -> int | None:
         if not token:
             return None
-        row = self.db.one("SELECT id, expires FROM sessions WHERE token_hash=?", (_hash(token),))
-        if row is None or row["expires"] < time.time():
+        row = self.db.one("SELECT id, expires, last_seen FROM sessions WHERE token_hash=?", (_hash(token),))
+        now = time.time()
+        if row is None or row["expires"] < now:
             return None
-        self.db.execute("UPDATE sessions SET last_seen=? WHERE id=?", (time.time(), row["id"]))
+        if now - row["last_seen"] > SEEN_REFRESH_S:
+            self.db.execute("UPDATE sessions SET last_seen=? WHERE id=?", (now, row["id"]))
         return row["id"]
 
     def revoke(self, session_id: int) -> None:
@@ -211,8 +237,7 @@ class Auth:
 
     def credentials(self) -> list[dict]:
         return [
-            {"id": r["id"], "name": r["name"], "created": r["created"]}
-            for r in self.db.query("SELECT id, name, created FROM credentials ORDER BY created")
+            {"id": r["id"], "name": r["name"], "created": r["created"]} for r in self.db.query("SELECT id, name, created FROM credentials ORDER BY created")
         ]
 
     def delete_credential(self, cred_id: str) -> None:

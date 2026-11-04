@@ -1,8 +1,42 @@
 [project]
-name = "habitacion-cam"
-version = "0.1.0"
+name = "camd"
+version = "2.0.0"
+description = "Self-hosted camera server for the ESP32-CAM: live view, motion and object detection, clips, alerts"
+readme = "../README.md"
 requires-python = ">=3.11"
-dependencies = ["fastapi", "uvicorn[standard]", "paho-mqtt", "webauthn", "pywebpush"]
+license = "MIT"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "paho-mqtt>=2",
+    "webauthn>=2",
+    "pywebpush",
+    "requests",
+    "numpy",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx", "ruff", "cbor2"]
+
+[project.scripts]
+camd = "camd.__main__:main"
+camd-ctl = "camd.ctl:main"
+
+[tool.setuptools.packages.find]
+include = ["camd*"]
+
+[tool.setuptools.package-data]
+camd = ["web/**/*", "build.txt"]
 
 [tool.pytest.ini_options]
 pythonpath = ["tests", "."]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 160
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "C4", "PIE", "RET", "ERA"]
+ignore = ["B008", "B904", "SIM108"]

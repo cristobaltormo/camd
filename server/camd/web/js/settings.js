@@ -1,43 +1,52 @@
-import { api, b64uToBuf, cameraState, chip, confirmDialog, deviceLabel, fmtBytes, fmtUptime, h, icon, isIOS, isStandalone, prefs, toast } from "./lib.js?v=5fdcb5d04d";
+import { api, b64uToBuf, cameraState, chip, confirmDialog, deviceLabel, fmtBytes, fmtUptime, h, icon, isIOS, isStandalone, labelName, prefs, toast } from "./lib.js";
+import { LANGUAGES, count, preference, setLanguage, t } from "./text.js";
 
 const SECTIONS = [
-  ["alerts", "Avisos", "bell"],
-  ["detection", "Detección", "sliders"],
-  ["recording", "Grabación", "film"],
-  ["captures", "Capturas", "snap"],
-  ["presence", "Presencia", "presence"],
-  ["camera", "Cámara", "camera"],
-  ["appearance", "Apariencia", "palette"],
-  ["app", "Aplicación", "app"],
-  ["system", "Sistema", "disk"],
-  ["security", "Seguridad", "key"],
+  ["alerts", "Alerts", "bell"],
+  ["detection", "Detection", "scan"],
+  ["recording", "Recording", "film"],
+  ["captures", "Captures", "snap"],
+  ["presence", "Presence", "presence"],
+  ["camera", "Camera", "camera"],
+  ["appearance", "Appearance", "palette"],
+  ["app", "App", "app"],
+  ["system", "System", "disk"],
+  ["security", "Security", "key"],
 ];
 
-const MIN = (n) => n * 60;
+const COMMON_LABELS = ["person", "cat", "dog", "bird", "car", "bicycle"];
+const DETECTION_MODES = [
+  ["off", "Off", "Motion only: every change of the image is recorded and alerted."],
+  ["alert", "Alert on objects", "Every motion is recorded, but you are only alerted when a person or animal is seen. Clips without an object are shown apart and deleted early."],
+  ["strict", "Only objects", "Only clips with a person or animal are kept. Shadows, light changes and insects are discarded without being stored."],
+];
+
+const seconds = (n) => (n < 60 ? count(n, "{n} second", "{n} seconds") : count(n / 60, "{n} minute", "{n} minutes"));
+const days = (n) => count(n, "{n} day", "{n} days");
+const hours = (n) => (n >= 24 ? days(n / 24) : count(n, "{n} hour", "{n} hours"));
+
 const OPTIONS = {
-  push_cooldown_s: [[30, "30 segundos"], [60, "1 minuto"], [120, "2 minutos"], [300, "5 minutos"], [600, "10 minutos"], [1800, "30 minutos"]],
-  pre_roll_s: [[0, "Sin pregrabación"], [2, "2 segundos"], [3, "3 segundos"], [5, "5 segundos"], [10, "10 segundos"]],
-  post_roll_s: [[5, "5 segundos"], [10, "10 segundos"], [20, "20 segundos"], [30, "30 segundos"], [60, "1 minuto"]],
-  max_event_s: [[30, "30 segundos"], [60, "1 minuto"], [120, "2 minutos"], [180, "3 minutos"], [300, "5 minutos"]],
-  retention_days: [[3, "3 días"], [7, "7 días"], [14, "14 días"], [30, "30 días"], [60, "60 días"], [90, "90 días"]],
-  max_disk_gb: [[1, "1 GB"], [2, "2 GB"], [4, "4 GB"], [6, "6 GB"], [8, "8 GB"], [10, "10 GB"]],
-  presence_grace_s: [[MIN(1), "1 minuto"], [MIN(2), "2 minutos"], [MIN(5), "5 minutos"], [MIN(10), "10 minutos"], [MIN(15), "15 minutos"], [MIN(30), "30 minutos"]],
-  camera_quality: [[0, "Predeterminada"], [8, "Máxima"], [12, "Alta"], [18, "Media"], [28, "Baja (menos datos)"]],
+  push_cooldown_s: [[30, 60, 120, 300, 600, 1800], seconds],
+  pre_roll_s: [[0, 2, 3, 5, 10], (v) => (v ? seconds(v) : t("No pre-roll"))],
+  post_roll_s: [[5, 10, 20, 30, 60], seconds],
+  max_event_s: [[30, 60, 120, 180, 300], seconds],
+  retention_days: [[3, 7, 14, 30, 60, 90], days],
+  unconfirmed_keep_h: [[1, 6, 12, 24, 48, 168], hours],
+  max_disk_gb: [[1, 2, 4, 6, 8, 10, 20, 50], (v) => `${v} GB`],
+  presence_grace_s: [[60, 120, 300, 600, 900, 1800], seconds],
+  detect_confidence: [[0.3, 0.4, 0.5, 0.6, 0.7, 0.8], (v) => `${Math.round(v * 100)}%`],
+  camera_quality: [[0, 8, 12, 18, 28], (v) => ({ 0: t("Default"), 8: t("Maximum"), 12: t("High"), 18: t("Medium"), 28: t("Low (less data)") })[v]],
 };
 
-const sensText = (v) => `${v} de 10 · ${v <= 3 ? "baja" : v <= 7 ? "media" : "alta"}`;
+const sensitivityText = (v) => t("{n} of 10 · {level}", { n: v, level: v <= 3 ? t("low") : v <= 7 ? t("medium") : t("high") });
 const signed = (v) => (v > 0 ? `+${v}` : String(v));
 
 export function mount(el, navigate, ctx) {
   const st = { server: null, draft: null, status: null, devices: null, pushKey: null, push: "off", section: SECTIONS.some(([id]) => id === ctx.sub) ? ctx.sub : "alerts", saving: false };
   const content = h("div", { class: "settings-body" });
-  const nav = h("nav", { class: "subnav", "aria-label": "Secciones de ajustes" });
-  const bar = h("div", { class: "savebar", hidden: true, role: "region", "aria-label": "Cambios sin guardar" });
-  el.append(
-    h("header", { class: "page-head" }, h("h1", { text: "Ajustes" })),
-    h("div", { class: "settings-layout" }, nav, content),
-    bar
-  );
+  const nav = h("nav", { class: "subnav", "aria-label": t("Settings sections") });
+  const bar = h("div", { class: "savebar", hidden: true, role: "region", "aria-label": t("Unsaved changes") });
+  el.append(h("header", { class: "page-head" }, h("h1", { text: t("Settings") })), h("div", { class: "settings-layout" }, nav, content), bar);
 
   const dirtyKeys = () => Object.keys(st.draft).filter((k) => JSON.stringify(st.draft[k]) !== JSON.stringify(st.server[k]));
 
@@ -46,25 +55,26 @@ export function mount(el, navigate, ctx) {
     bar.hidden = !keys.length;
     if (!keys.length) return;
     bar.replaceChildren(
-      h("span", { text: `${keys.length} ${keys.length === 1 ? "cambio sin guardar" : "cambios sin guardar"}` }),
+      h("span", { text: count(keys.length, "{n} unsaved change", "{n} unsaved changes") }),
       h("div", { class: "row tight" },
-        h("button", { class: "btn small", text: "Descartar", disabled: st.saving, onclick: () => { st.draft = structuredClone(st.server); drawSection(); refreshBar(); } }),
-        h("button", { class: "btn small primary", text: st.saving ? "Guardando..." : "Guardar", disabled: st.saving, onclick: save })
+        h("button", { class: "btn small", text: t("Discard"), disabled: st.saving, onclick: () => { st.draft = structuredClone(st.server); drawSection(); refreshBar(); } }),
+        h("button", { class: "btn small primary", text: st.saving ? t("Saving...") : t("Save"), disabled: st.saving, onclick: save })
       )
     );
   }
 
   async function save() {
     const keys = dirtyKeys();
-    const patch = Object.fromEntries(keys.map((k) => [k, st.draft[k]]));
     st.saving = true;
     refreshBar();
     try {
-      await api("/api/settings", { method: "POST", body: patch });
+      await api("/api/settings", { method: "POST", body: Object.fromEntries(keys.map((k) => [k, st.draft[k]])) });
       st.server = await api("/api/settings");
       st.draft = structuredClone(st.server);
-      toast("Cambios guardados", "ok");
+      st.status = await api("/api/status");
+      toast(t("Changes saved"), "ok");
       if (keys.some((k) => k.startsWith("camera_"))) setTimeout(() => window.dispatchEvent(new Event("cam:camera-changed")), 1500);
+      if (keys.includes("detection") || keys.includes("detect_labels")) drawSection();
     } catch (e) {
       toast(e.message, "bad");
     }
@@ -83,49 +93,54 @@ export function mount(el, navigate, ctx) {
   };
 
   const select = (key, label, hint) => {
-    const opts = OPTIONS[key];
+    const [values, format] = OPTIONS[key];
     const current = st.draft[key];
-    const list = opts.some(([v]) => v === current) ? opts : [...opts, [current, String(current)]].sort((a, b) => a[0] - b[0]);
-    const sel = h("select", { class: "select", "aria-label": label, onchange: (e) => change(key, Number(e.target.value)) },
-      list.map(([v, text]) => h("option", { value: v, text, selected: v === current })));
-    return setting(label, hint, sel);
+    const all = values.includes(current) ? values : [...values, current].sort((a, b) => a - b);
+    const control = h("select", { class: "select", "aria-label": label, onchange: (e) => change(key, Number(e.target.value)) },
+      all.map((v) => h("option", { value: v, text: format(v) ?? String(v), selected: v === current })));
+    return setting(label, hint, control);
   };
 
-  const slider = (key, label, hint, min, max, fmt = String) => {
-    const out = h("span", { class: "slider-out", text: fmt(st.draft[key]) });
+  const choice = (key, label, hint, options) => {
+    const control = h("select", { class: "select", "aria-label": label, onchange: (e) => change(key, e.target.value) },
+      options.map(([value, text]) => h("option", { value, text, selected: value === st.draft[key] })));
+    return setting(label, hint, control);
+  };
+
+  const slider = (key, label, hint, min, max, format = String) => {
+    const out = h("span", { class: "slider-out", text: format(st.draft[key]) });
     const input = h("input", { type: "range", min, max, step: 1, value: st.draft[key], "aria-label": label });
-    input.addEventListener("input", () => { out.textContent = fmt(Number(input.value)); change(key, Number(input.value)); });
+    input.addEventListener("input", () => { out.textContent = format(Number(input.value)); change(key, Number(input.value)); });
     return h("div", { class: "setting column" },
       h("div", { class: "row" }, h("div", { class: "setting-text" }, h("div", { class: "setting-label", text: label }), hint ? h("div", { class: "muted", text: hint }) : null), out),
       input);
   };
 
   const card = (title, ...rows) => h("section", { class: "card panel" }, title ? h("h2", { class: "panel-title", text: title }) : null, ...rows);
+  const kv = (label, value) => h("div", { class: "row kv-row" }, h("span", { class: "muted", text: label }), h("span", { text: value }));
 
   let onToggle = () => {};
 
-  // ---------- sections ----------
-
   function alertsSection() {
-    const quietStart = h("input", { type: "time", class: "time", value: st.draft.quiet_start, "aria-label": "Inicio del silencio", disabled: !st.draft.quiet_enabled, onchange: (e) => change("quiet_start", e.target.value || st.server.quiet_start) });
-    const quietEnd = h("input", { type: "time", class: "time", value: st.draft.quiet_end, "aria-label": "Fin del silencio", disabled: !st.draft.quiet_enabled, onchange: (e) => change("quiet_end", e.target.value || st.server.quiet_end) });
-    onToggle = (key) => { if (key === "quiet_enabled") { quietStart.disabled = quietEnd.disabled = !st.draft.quiet_enabled; } };
+    const quietStart = h("input", { type: "time", class: "time", value: st.draft.quiet_start, "aria-label": t("Quiet hours start"), disabled: !st.draft.quiet_enabled, onchange: (e) => change("quiet_start", e.target.value || st.server.quiet_start) });
+    const quietEnd = h("input", { type: "time", class: "time", value: st.draft.quiet_end, "aria-label": t("Quiet hours end"), disabled: !st.draft.quiet_enabled, onchange: (e) => change("quiet_end", e.target.value || st.server.quiet_end) });
+    onToggle = (key) => { if (key === "quiet_enabled") quietStart.disabled = quietEnd.disabled = !st.draft.quiet_enabled; };
 
     const webStatus = h("div", { class: "muted" });
     const webBtn = h("button", { class: "btn small" });
     const applyPush = (state) => {
       const needsInstall = isIOS() && !isStandalone();
-      webStatus.textContent = state === "on" ? "Activadas en este dispositivo"
-        : state === "denied" ? "Permiso denegado en los ajustes del sistema"
-        : needsInstall ? "En iPhone solo funcionan desde la app instalada en la pantalla de inicio"
-        : state === "unsupported" ? "Este navegador no admite avisos push"
-        : "Desactivadas en este dispositivo";
+      webStatus.textContent = state === "on" ? t("Enabled on this device")
+        : state === "denied" ? t("Permission denied in the system settings")
+        : needsInstall ? t("On iPhone they only work from the app added to the home screen")
+        : state === "unsupported" ? t("This browser does not support push alerts")
+        : t("Disabled on this device");
       webBtn.hidden = state === "unsupported" || state === "denied" || needsInstall;
-      webBtn.textContent = state === "on" ? "Desactivar" : "Activar";
+      webBtn.textContent = state === "on" ? t("Disable") : t("Enable");
       webBtn.onclick = async () => {
         try {
-          if (state === "on") { await disablePush(); state = "off"; toast("Avisos desactivados"); }
-          else { await enablePush(st.pushKey); state = "on"; toast("Avisos activados", "ok"); }
+          if (state === "on") { await disablePush(); state = "off"; toast(t("Alerts disabled")); }
+          else { await enablePush(st.pushKey); state = "on"; toast(t("Alerts enabled"), "ok"); }
         } catch (e) { toast(e.message, "bad"); }
         st.push = state;
         applyPush(state);
@@ -133,106 +148,137 @@ export function mount(el, navigate, ctx) {
     };
     applyPush(st.push);
 
-    const test = h("button", { class: "btn small", text: "Enviar prueba", onclick: async () => {
+    const test = h("button", { class: "btn small", text: t("Send a test"), onclick: async () => {
       try {
         const r = await api("/api/push/test", { method: "POST" });
-        toast(r.sent ? `Aviso enviado (${r.sent} canal${r.sent > 1 ? "es" : ""})` : "No hay ningún canal activo", r.sent ? "ok" : "bad");
+        toast(r.sent ? count(r.sent, "Alert sent ({n} channel)", "Alert sent ({n} channels)") : t("No channel is active"), r.sent ? "ok" : "bad");
       } catch (e) { toast(e.message, "bad"); }
     } });
 
+    const external = st.status.channels.map((name) =>
+      h("div", { class: "setting" }, h("div", { class: "row tight setting-text" }, icon("bell", "dim"), h("div", {}, h("div", { class: "setting-label", text: name }), h("div", { class: "muted", text: t("Configured on the server") }))), chip(t("Active"), "ok")));
+
     return [
-      card("Canales",
-        h("div", { class: "setting" },
-          h("div", { class: "row tight setting-text" }, icon("bell", "dim"), h("div", {}, h("div", { class: "setting-label", text: "Notifich" }), h("div", { class: "muted", text: st.status.notifich ? "Llegan a la app Notifich del móvil" : "No configurado en el servidor" }))),
-          st.status.notifich ? chip("Activo", "ok") : chip("Inactivo", "bad")),
-        h("div", { class: "setting" },
-          h("div", { class: "row tight setting-text" }, icon("monitor", "dim"), h("div", {}, h("div", { class: "setting-label", text: "Notificaciones web" }), webStatus)),
-          webBtn),
+      card(t("Channels"),
+        ...external,
+        h("div", { class: "setting" }, h("div", { class: "row tight setting-text" }, icon("monitor", "dim"), h("div", {}, h("div", { class: "setting-label", text: t("Web notifications") }), webStatus)), webBtn),
         h("div", { class: "row end" }, test)),
-      card("Qué avisar",
-        toggle("notify_motion", "Movimiento", "Aviso cuando se empieza a grabar un evento"),
-        toggle("notify_offline", "Cámara sin conexión", "Aviso si no llegan imágenes durante 5 minutos"),
-        select("push_cooldown_s", "Tiempo mínimo entre avisos", "Evita avalanchas si hay mucho movimiento")),
-      card("Horas de silencio",
-        toggle("quiet_enabled", "Silenciar avisos de movimiento", "Se sigue grabando, solo se calla el aviso"),
-        setting("Desde", null, quietStart),
-        setting("Hasta", null, quietEnd)),
+      card(t("What to alert"),
+        toggle("notify_motion", t("Detections"), st.draft.detection === "off" ? t("Alert when a clip starts recording") : t("Alert when a person or animal is seen")),
+        toggle("notify_offline", t("Camera offline"), t("Alert if no images arrive for 5 minutes")),
+        select("push_cooldown_s", t("Minimum time between alerts"), t("Avoids floods when there is a lot of activity")),
+        choice("language", t("Language of the alerts"), null, LANGUAGES.filter(([id]) => id !== "auto"))),
+      card(t("Quiet hours"),
+        toggle("quiet_enabled", t("Silence detection alerts"), t("Recording continues, only the alert is muted")),
+        setting(t("From"), null, quietStart),
+        setting(t("Until"), null, quietEnd)),
     ];
   }
 
+  function labelGrid() {
+    const selected = new Set(st.draft.detect_labels);
+    const box = (label) => h("label", { class: "check" },
+      h("input", { type: "checkbox", checked: selected.has(label), onchange: (e) => {
+        if (e.target.checked) selected.add(label); else selected.delete(label);
+        if (!selected.size) { selected.add(label); e.target.checked = true; toast(t("Pick at least one object"), "bad"); return; }
+        change("detect_labels", [...selected]);
+      } }), h("span", { text: labelName(label) }));
+    const others = st.server.available_labels.filter((label) => !COMMON_LABELS.includes(label));
+    return h("div", { class: "stack" },
+      h("div", { class: "checks" }, COMMON_LABELS.map(box)),
+      h("details", { class: "more-labels" }, h("summary", { text: t("More objects") }), h("div", { class: "checks" }, others.map(box))));
+  }
+
   function detectionSection() {
-    const rects = st.draft.ignore_rects;
-    const zone = zoneEditor(rects, (next) => change("ignore_rects", next));
+    const detection = st.status.detection;
+    const modeButtons = DETECTION_MODES.map(([id, label]) => h("button", { class: st.draft.detection === id ? "on" : "", text: t(label), "aria-pressed": String(st.draft.detection === id), onclick: () => { change("detection", id); drawSection(); } }));
+    const description = DETECTION_MODES.find(([id]) => id === st.draft.detection)[2];
+    const state = detection.mode === "off" ? chip(t("Off"), "warn")
+      : detection.state === "ready" ? chip(t("Ready · {ms} ms per image", { ms: Math.round(detection.inference_ms) || "-" }), "ok")
+      : detection.state === "error" ? chip(t("Unavailable"), "bad")
+      : chip(t("Loading the model"), "warn");
+    const active = st.draft.detection !== "off";
     return [
-      card("Sensibilidad",
-        slider("sensitivity", "Sensibilidad al movimiento", "Más alta detecta cambios más pequeños, pero da más falsos avisos", 1, 10, sensText)),
-      card("Zonas ignoradas",
-        h("div", { class: "muted", text: "Arrastra sobre la imagen para marcar donde no quieres detectar (ventana, ventilador, pantalla)." }),
-        zone),
+      card(t("Object detection"),
+        h("div", { class: "muted", text: t("A small neural network looks at the frames where something moves and tells people and animals apart from shadows, light changes and insects. It runs on the server, with no cloud.") }),
+        h("div", { class: "seg", role: "group", "aria-label": t("Detection mode") }, modeButtons),
+        h("div", { class: "note", text: t(description) }),
+        h("div", { class: "row" }, h("span", { class: "muted", text: t("Detector") }), state),
+        detection.error ? h("div", { class: "err", text: detection.error }) : null),
+      active ? card(t("What to look for"),
+        labelGrid(),
+        select("detect_confidence", t("Minimum confidence"), t("Lower sees more objects but is wrong more often")),
+        st.draft.detection === "alert" ? select("unconfirmed_keep_h", t("Keep clips without objects for"), t("They are not alerted and are deleted early")) : null) : null,
+      card(t("Motion sensitivity"),
+        slider("sensitivity", t("Sensitivity to motion"), t("Higher notices smaller changes but gives more false alarms"), 1, 10, sensitivityText)),
+      card(t("Ignored zones"),
+        h("div", { class: "muted", text: t("Drag over the image to mark where you do not want to detect (window, fan, screen).") }),
+        zoneEditor(st.draft.ignore_rects, (next) => change("ignore_rects", next))),
     ];
   }
 
   function recordingSection() {
     return [
-      card("Clips",
-        select("pre_roll_s", "Pregrabación", "Segundos guardados antes de que empiece el movimiento"),
-        select("post_roll_s", "Seguir grabando tras el movimiento", "Cuánto esperar sin movimiento antes de cerrar el clip"),
-        select("max_event_s", "Duración máxima de un clip")),
-      card("Almacenamiento",
-        select("retention_days", "Conservar eventos", "Los más antiguos se borran solos"),
-        select("max_disk_gb", "Espacio máximo", "Si se llena, se borran los más antiguos primero"),
+      card(t("Clips"),
+        select("pre_roll_s", t("Pre-roll"), t("Seconds kept from before the motion starts")),
+        select("post_roll_s", t("Keep recording after the activity"), t("How long to wait without activity before closing the clip")),
+        select("max_event_s", t("Maximum length of a clip"))),
+      card(t("Storage"),
+        select("retention_days", t("Keep events for"), t("The oldest are deleted automatically")),
+        select("max_disk_gb", t("Maximum space"), t("When it fills up, the oldest are deleted first")),
         storageBlock()),
     ];
   }
 
   function capturesSection() {
-    const dest = prefs.photoDest;
-    const seg = h("div", { class: "seg", role: "group", "aria-label": "Destino de las fotos" }, [["ask", "Preguntar"], ["web", "En la web"], ["device", "En el dispositivo"]].map(([id, label]) =>
-      h("button", { class: dest === id ? "on" : "", text: label, "aria-pressed": String(dest === id), onclick: () => { prefs.photoDest = id; drawSection(); } })));
-    const clip = h("select", { class: "select", "aria-label": "Duración por defecto del clip", onchange: (e) => { prefs.clipSeconds = Number(e.target.value); } },
-      [[15, "15 segundos"], [30, "30 segundos"], [60, "1 minuto"], [120, "2 minutos"], [300, "5 minutos"]].map(([v, t]) => h("option", { value: v, text: t, selected: v === prefs.clipSeconds })));
-    const u = st.status.storage;
+    const destination = prefs.photoDest;
+    const segment = h("div", { class: "seg", role: "group", "aria-label": t("Where photos go") }, [["ask", t("Ask")], ["web", t("On the server")], ["device", t("On the device")]].map(([id, label]) =>
+      h("button", { class: destination === id ? "on" : "", text: label, "aria-pressed": String(destination === id), onclick: () => { prefs.photoDest = id; drawSection(); } })));
+    const clip = h("select", { class: "select", "aria-label": t("Default clip length"), onchange: (e) => { prefs.clipSeconds = Number(e.target.value); } },
+      [15, 30, 60, 120, 300].map((v) => h("option", { value: v, text: seconds(v), selected: v === prefs.clipSeconds })));
+    const usage = st.status.storage;
     return [
-      card("Fotos",
-        h("div", { class: "setting column" }, h("div", { class: "setting-text" }, h("div", { class: "setting-label", text: "Dónde se guardan" }), h("div", { class: "muted", text: "En la web quedan en la galería de Fotos del servidor; en el dispositivo se descargan o se comparten desde el móvil." })), seg),
-        h("div", { class: "setting" }, h("div", { class: "setting-text" }, h("div", { class: "setting-label", text: "Guardadas en la web" }), h("div", { class: "muted", text: `${u.photos} fotos · ${fmtBytes(u.photo_bytes)}` })), h("a", { class: "btn small", href: "#/photos", text: "Abrir" }))),
-      card("Clips",
-        setting("Duración por defecto", "Los clips manuales se guardan en Eventos y no se borran solos", clip)),
-      card(null, h("div", { class: "muted", text: "Estas preferencias se guardan solo en este dispositivo." })),
+      card(t("Photos"),
+        h("div", { class: "setting column" }, h("div", { class: "setting-text" }, h("div", { class: "setting-label", text: t("Where they are saved") }), h("div", { class: "muted", text: t("On the server they stay in the Photos gallery; on the device they are downloaded or shared from your phone.") })), segment),
+        h("div", { class: "setting" }, h("div", { class: "setting-text" }, h("div", { class: "setting-label", text: t("Saved on the server") }), h("div", { class: "muted", text: `${count(usage.photos, "{n} photo", "{n} photos")} · ${fmtBytes(usage.photo_bytes)}` })), h("a", { class: "btn small", href: "#/photos", text: t("Open") }))),
+      card(t("Clips"), setting(t("Default length"), t("Manual clips are saved in Events and never deleted automatically"), clip)),
+      card(null, h("div", { class: "muted", text: t("These preferences are stored only on this device.") })),
     ];
   }
 
   function storageBlock() {
     const used = st.status.storage;
-    const pct = Math.min(100, Math.round((used.bytes / (st.draft.max_disk_gb * 1024 ** 3)) * 100));
-    const fill = h("div", { class: "fill" + (pct > 85 ? " warn" : "") });
-    fill.style.width = pct + "%";
+    const percent = Math.min(100, Math.round((used.bytes / (st.draft.max_disk_gb * 1024 ** 3)) * 100));
+    const fill = h("div", { class: "fill" + (percent > 85 ? " warn" : "") });
+    fill.style.width = percent + "%";
     return h("div", { class: "kv-storage" },
-      h("div", { class: "row" }, h("span", { class: "muted", text: "Eventos" }), h("span", { text: `${fmtBytes(used.bytes)} · ${used.events}` })),
+      h("div", { class: "row" }, h("span", { class: "muted", text: t("Events") }), h("span", { text: `${fmtBytes(used.bytes)} · ${used.events}` })),
       h("div", { class: "bar" }, fill),
-      h("div", { class: "row spaced" }, h("span", { class: "muted", text: "Fotos" }), h("span", { text: `${fmtBytes(used.photo_bytes)} · ${used.photos}` })));
+      h("div", { class: "row spaced" }, h("span", { class: "muted", text: t("Photos") }), h("span", { text: `${fmtBytes(used.photo_bytes)} · ${used.photos}` })));
   }
 
   function presenceSection() {
     const p = st.status.presence;
     return [
-      card("Estado",
+      card(t("Status"),
         h("div", { class: "setting" },
-          h("div", { class: "row tight setting-text" }, icon("presence", "dim"), h("div", {}, h("div", { class: "setting-label", text: p.configured ? (p.home ? "Estás en casa" : "Fuera de casa") : "Sin dispositivo configurado" }), h("div", { class: "muted", text: p.configured ? "Detectado por la red wifi de casa" : "Define presence_devices en la configuración del servidor" }))),
-          chip(p.configured ? (p.home ? "En casa" : "Fuera") : "Sin configurar", p.configured ? (p.home ? "ok" : "warn") : "bad"))),
-      card("Modo automático",
-        select("presence_grace_s", "Tiempo de gracia", "Los iPhone duermen la wifi: se espera este tiempo antes de darte por fuera de casa"),
-        h("div", { class: "note", text: "En modo Auto la cámara graba cuando no estás. El modo manual (Armado o Desarmado) se cambia desde En vivo." })),
+          h("div", { class: "row tight setting-text" }, icon("presence", "dim"), h("div", {},
+            h("div", { class: "setting-label", text: p.configured ? (p.home ? t("You are home") : t("You are away")) : t("No device configured") }),
+            h("div", { class: "muted", text: p.configured ? t("Detected on the home network") : t("Set presence_devices in the server configuration") }))),
+          chip(p.configured ? (p.home ? t("Home") : t("Away")) : t("Not set"), p.configured ? (p.home ? "ok" : "warn") : "bad"))),
+      card(t("Automatic mode"),
+        select("presence_grace_s", t("Grace period"), t("Phones put wifi to sleep: this much time passes before you count as away")),
+        h("div", { class: "note", text: t("In Auto mode the camera records when you are away. The manual modes (Armed or Disarmed) are changed from Live.") })),
     ];
   }
 
   function cameraSection() {
-    const img = h("img", { alt: "Vista previa de la cámara", src: "/api/snapshot?t=" + Date.now(), draggable: "false" });
+    const img = h("img", { alt: t("Camera preview"), src: "/api/snapshot?t=" + Date.now(), draggable: "false" });
     const refresh = () => { img.src = "/api/snapshot?t=" + Date.now(); };
     window.addEventListener("cam:camera-changed", refresh);
     st.cleanupSection = () => window.removeEventListener("cam:camera-changed", refresh);
     const cam = st.status.camera;
-    const power = h("input", { type: "checkbox", class: "switch", "aria-label": "Cámara en uso", checked: cam.enabled, onchange: async (e) => {
+    const power = h("input", { type: "checkbox", class: "switch", "aria-label": t("Camera in use"), checked: cam.enabled, onchange: async (e) => {
       const on = e.target.checked;
       e.target.disabled = true;
       try {
@@ -240,7 +286,7 @@ export function mount(el, navigate, ctx) {
         st.server.camera_enabled = on;
         st.draft.camera_enabled = on;
         st.status = await api("/api/status");
-        toast(on ? "Cámara activada: la buscaré en cuanto esté enchufada" : "Cámara desactivada: no se graba ni se avisa", on ? "ok" : undefined);
+        toast(on ? t("Camera enabled: I will look for it as soon as it is plugged in") : t("Camera disabled: nothing is recorded or alerted"), on ? "ok" : undefined);
         refreshBar();
         drawSection();
       } catch (err) {
@@ -250,89 +296,85 @@ export function mount(el, navigate, ctx) {
       }
     } });
     return [
-      card("Estado",
-        setting("Cámara en uso", "Desactívala antes de desenchufarla: la app deja de buscarla, no avisa y no gasta recursos. Al activarla, todo vuelve solo.", power)),
-      card("Vista previa",
+      card(t("Status"), setting(t("Camera in use"), t("Turn it off before unplugging it: the app stops looking for it, does not alert and uses no resources. When you turn it on, everything comes back."), power)),
+      card(t("Preview"),
         h("div", { class: "preview" }, img),
-        h("div", { class: "row end" }, h("button", { class: "btn small", onclick: refresh }, icon("refresh"), "Actualizar")),
-        h("div", { class: "muted", text: "Los cambios se aplican a la cámara al guardar y se recuerdan si se reinicia." })),
-      card("Imagen",
-        toggle("camera_vflip", "Voltear verticalmente", "Si la cámara está montada del revés"),
-        toggle("camera_hmirror", "Espejo horizontal"),
-        slider("camera_brightness", "Brillo", null, -2, 2, signed),
-        slider("camera_contrast", "Contraste", null, -2, 2, signed),
-        select("camera_quality", "Calidad de imagen", "Más calidad pesa más: con wifi flojo puede ir a saltos")),
-      card("Dispositivo",
-        kv("Estado", cameraState(cam).text),
-        kv("Señal wifi", cam.online && cam.rssi ? `${cam.rssi} dBm` : "-"),
-        kv("Firmware", cam.fw || "-"),
-        kv("Encendida desde hace", cam.online ? fmtUptime(cam.uptime_s) : "-")),
+        h("div", { class: "row end" }, h("button", { class: "btn small", onclick: refresh }, icon("refresh"), t("Refresh"))),
+        h("div", { class: "muted", text: t("Changes are applied to the camera when you save and are remembered after a restart.") })),
+      card(t("Image"),
+        toggle("camera_vflip", t("Flip vertically"), t("If the camera is mounted upside down")),
+        toggle("camera_hmirror", t("Mirror horizontally")),
+        slider("camera_brightness", t("Brightness"), null, -2, 2, signed),
+        slider("camera_contrast", t("Contrast"), null, -2, 2, signed),
+        select("camera_quality", t("Image quality"), t("More quality weighs more: with weak wifi it may stutter"))),
+      card(t("Device"), ...deviceRows(cam)),
     ];
   }
+
+  const deviceRows = (cam) => [
+    kv(t("Status"), cameraState(cam).text),
+    kv(t("Wifi signal"), cam.online && cam.rssi ? `${cam.rssi} dBm` : "-"),
+    kv(t("Frame rate"), cam.online && cam.fps ? `${cam.fps} fps` : "-"),
+    kv(t("Firmware"), cam.fw || "-"),
+    kv(t("Powered on for"), cam.online ? fmtUptime(cam.uptime_s) : "-"),
+  ];
 
   function appearanceSection() {
     const theme = localStorage.getItem("cam.theme") || "auto";
     const accent = localStorage.getItem("cam.accent") || "blue";
-    const seg = h("div", { class: "seg", role: "group", "aria-label": "Tema" }, [["auto", "Automático"], ["dark", "Oscuro"], ["light", "Claro"]].map(([id, label]) =>
+    const segment = h("div", { class: "seg", role: "group", "aria-label": t("Theme") }, [["auto", t("Automatic")], ["dark", t("Dark")], ["light", t("Light")]].map(([id, label]) =>
       h("button", { class: theme === id ? "on" : "", text: label, "aria-pressed": String(theme === id), onclick: () => { window.camTheme.set("cam.theme", id); drawSection(); } })));
-    const names = { blue: "Azul", green: "Verde", violet: "Violeta", orange: "Naranja", pink: "Rosa" };
-    const swatches = h("div", { class: "swatches", role: "group", "aria-label": "Color de acento" }, Object.entries(window.camTheme.accents).map(([id, color]) => {
-      const b = h("button", { class: "swatch" + (accent === id ? " on" : ""), "aria-label": names[id], "aria-pressed": String(accent === id), title: names[id], onclick: () => { window.camTheme.set("cam.accent", id); drawSection(); } });
-      b.style.background = color;
-      return b;
+    const names = { blue: t("Blue"), green: t("Green"), violet: t("Violet"), orange: t("Orange"), pink: t("Pink") };
+    const swatches = h("div", { class: "swatches", role: "group", "aria-label": t("Accent color") }, Object.entries(window.camTheme.accents).map(([id, color]) => {
+      const button = h("button", { class: "swatch" + (accent === id ? " on" : ""), "aria-label": names[id], "aria-pressed": String(accent === id), title: names[id], onclick: () => { window.camTheme.set("cam.accent", id); drawSection(); } });
+      button.style.background = color;
+      return button;
     }));
-    return [card("Tema", seg, setting("Color de acento", null, swatches)), card(null, h("div", { class: "muted", text: "La apariencia se guarda solo en este dispositivo." }))];
+    const language = h("select", { class: "select", "aria-label": t("Language"), onchange: (e) => { setLanguage(e.target.value); location.reload(); } },
+      LANGUAGES.map(([id, label]) => h("option", { value: id, text: id === "auto" ? t("Automatic") : label, selected: preference() === id })));
+    return [card(t("Theme"), segment, setting(t("Accent color"), null, swatches), setting(t("Language"), t("Of this interface"), language)), card(null, h("div", { class: "muted", text: t("Appearance is stored only on this device.") }))];
   }
 
   function appSection() {
-    const standalone = isStandalone();
     const install = ctx.install;
     let installRow;
-    if (standalone) installRow = setting("Aplicación instalada", "Estás usando la versión instalada", chip("Instalada", "ok"));
-    else if (install.available()) installRow = setting("Instalar la aplicación", "Se abre en su propia ventana, sin barra del navegador", h("button", { class: "btn small primary", text: "Instalar", onclick: async () => { await install.run(); drawSection(); } }));
-    else if (isIOS()) installRow = setting("Instalar en iPhone", "Safari: botón Compartir, luego Añadir a pantalla de inicio. Abre la app desde ese icono.", null);
-    else installRow = setting("Instalar la aplicación", "Desde el menú del navegador: Instalar aplicación o Añadir a pantalla de inicio.", null);
+    if (isStandalone()) installRow = setting(t("App installed"), t("You are using the installed version"), chip(t("Installed"), "ok"));
+    else if (install.available()) installRow = setting(t("Install the app"), t("It opens in its own window, without the browser bar"), h("button", { class: "btn small primary", text: t("Install"), onclick: async () => { await install.run(); drawSection(); } }));
+    else if (isIOS()) installRow = setting(t("Install on iPhone"), t("Safari: Share button, then Add to Home Screen. Open the app from that icon."), null);
+    else installRow = setting(t("Install the app"), t("From the browser menu: Install app or Add to home screen."), null);
 
-    const version = h("span", { class: "muted", text: `Versión ${st.status.version || "-"}` });
-    const check = h("button", { class: "btn small", text: "Buscar actualizaciones", onclick: async () => {
-      const reg = await navigator.serviceWorker?.getRegistration();
-      if (!reg) return toast("Sin service worker en este navegador", "bad");
-      await reg.update().catch(() => {});
-      toast(reg.waiting || reg.installing ? "Hay una versión nueva, recarga para usarla" : "Ya tienes la última versión");
+    const check = h("button", { class: "btn small", text: t("Check for updates"), onclick: async () => {
+      const registration = await navigator.serviceWorker?.getRegistration();
+      if (!registration) return toast(t("No service worker in this browser"), "bad");
+      await registration.update().catch(() => {});
+      toast(registration.waiting || registration.installing ? t("A new version is ready, reload to use it") : t("You already have the latest version"));
     } });
-    const clear = h("button", { class: "btn small danger", text: "Vaciar caché local", onclick: async () => {
-      if (!(await confirmDialog("Vaciar caché local", "Se borran los archivos guardados para uso sin conexión y se recarga la aplicación.", "Vaciar", false))) return;
+    const clear = h("button", { class: "btn small danger", text: t("Clear local cache"), onclick: async () => {
+      if (!(await confirmDialog(t("Clear local cache"), t("The files kept for offline use are deleted and the app reloads."), t("Clear"), false))) return;
       for (const key of await caches.keys()) await caches.delete(key);
       location.reload();
     } });
 
-    const keys = [["1", "En vivo"], ["2", "Eventos"], ["3", "Fotos"], ["4", "Ajustes"], ["F", "Pantalla completa (En vivo)"], ["S", "Guardar foto (En vivo)"], ["Esc", "Cerrar"], ["← →", "Evento anterior o siguiente"]];
+    const keys = [["1", t("Live")], ["2", t("Events")], ["3", t("Photos")], ["4", t("Settings")], ["F", t("Full screen (Live)")], ["S", t("Save photo (Live)")], ["Esc", t("Close")], ["← →", t("Previous or next event")]];
     return [
-      card("Instalación", installRow),
-      card("Mantenimiento", setting("Actualizaciones", null, check), setting("Caché local", "Útil si la aplicación se queda con datos viejos", clear), h("div", { class: "row end" }, version)),
-      card("Atajos de teclado", h("div", { class: "keys" }, keys.map(([k, d]) => h("div", { class: "row" }, h("span", { text: d }), h("kbd", { text: k }))))),
+      card(t("Installation"), installRow),
+      card(t("Maintenance"), setting(t("Updates"), null, check), setting(t("Local cache"), t("Useful if the app is stuck with old data"), clear), h("div", { class: "row end" }, h("span", { class: "muted", text: t("Version {version}", { version: st.status.version || "-" }) }))),
+      card(t("Keyboard shortcuts"), h("div", { class: "keys" }, keys.map(([key, text]) => h("div", { class: "row" }, h("span", { text }), h("kbd", { text: key }))))),
     ];
-  }
-
-  function kv(label, value) {
-    return h("div", { class: "row kv-row" }, h("span", { class: "muted", text: label }), h("span", { text: value }));
   }
 
   function systemSection() {
     const s = st.status;
-    const cam = s.camera;
+    const detector = s.detection.mode === "off" ? t("Off") : s.detection.state === "ready" ? t("Ready") : s.detection.state === "error" ? t("Unavailable") : t("Loading");
     return [
-      card("Servidor",
-        kv("Versión", s.version || "-"),
-        kv("Presencia", s.presence.configured ? (s.presence.home ? "En casa" : "Fuera de casa") : "Sin configurar"),
-        kv("Avisos Notifich", s.notifich ? "Activos" : "Inactivos"),
-        kv("Dispositivos web suscritos", String(s.push_subscriptions))),
-      card("Cámara",
-        kv("Estado", cameraState(cam).text),
-        kv("Señal wifi", cam.online && cam.rssi ? `${cam.rssi} dBm` : "-"),
-        kv("Firmware", cam.fw || "-"),
-        kv("Encendida desde hace", cam.online ? fmtUptime(cam.uptime_s) : "-")),
-      card("Almacenamiento", storageBlock()),
+      card(t("Server"),
+        kv(t("Version"), s.version || "-"),
+        kv(t("Presence"), s.presence.configured ? (s.presence.home ? t("Home") : t("Away")) : t("Not set")),
+        kv(t("Object detector"), detector),
+        kv(t("Other alert channels"), s.channels.length ? s.channels.join(", ") : t("None")),
+        kv(t("Subscribed web devices"), String(s.push_subscriptions))),
+      card(t("Camera"), ...deviceRows(s.camera)),
+      card(t("Storage"), storageBlock()),
     ];
   }
 
@@ -340,34 +382,35 @@ export function mount(el, navigate, ctx) {
     const d = st.devices;
     const codeBox = h("div");
     const others = d.sessions.filter((s) => s.id !== d.current_session);
+    const passkeys = d.credentials.length ? [h("div", { class: "list" }, d.credentials.map((c) =>
+      h("div", {}, h("div", { class: "row tight grow" }, icon("key", "dim"), h("span", { text: c.name || "Passkey" })),
+        h("button", { class: "btn small danger", text: t("Remove"), onclick: async () => {
+          if (!(await confirmDialog(t("Remove passkey"), t("That device will no longer be able to sign in."), t("Remove"), true))) return;
+          try { await api(`/api/auth/credentials/${encodeURIComponent(c.id)}`, { method: "DELETE" }); await reload(); } catch (e) { toast(e.message, "bad"); }
+        } })))) ] : [h("div", { class: "muted", text: t("No passkeys registered.") })];
     return [
-      card("Passkeys",
-        h("div", { class: "list" }, d.credentials.map((c) =>
-          h("div", {}, h("div", { class: "row tight grow" }, icon("key", "dim"), h("span", { text: c.name || "Passkey" })),
-            h("button", { class: "btn small danger", text: "Quitar", onclick: async () => {
-              if (!(await confirmDialog("Quitar passkey", "Ese dispositivo dejará de poder entrar.", "Quitar", true))) return;
-              try { await api(`/api/auth/credentials/${encodeURIComponent(c.id)}`, { method: "DELETE" }); await reload(); } catch (e) { toast(e.message, "bad"); }
-            } })))),
-        h("button", { class: "btn block", text: "Añadir otro dispositivo", onclick: async () => {
+      card("Passkeys", ...passkeys,
+        h("button", { class: "btn block", text: t("Add another device"), onclick: async () => {
           try {
             const r = await api("/api/auth/enroll-code", { method: "POST" });
-            codeBox.replaceChildren(h("div", { class: "code", text: r.code }), h("div", { class: "muted center-text", text: "Válido 10 minutos. Introdúcelo en el dispositivo nuevo." }));
+            codeBox.replaceChildren(h("div", { class: "code", text: r.code }), h("div", { class: "muted center-text", text: t("Valid for 10 minutes. Enter it on the new device.") }));
           } catch (e) { toast(e.message, "bad"); }
         } }),
         codeBox),
-      card("Sesiones abiertas",
+      card(t("Password"), h("div", { class: "muted", text: d.password ? t("Password sign-in is enabled. Change it on the server with camd-ctl password.") : t("Password sign-in is not set up. Create one on the server with camd-ctl password.") })),
+      card(t("Open sessions"),
         h("div", { class: "list" }, d.sessions.map((s) => {
           const current = s.id === d.current_session;
-          return h("div", {}, h("div", { class: "row tight grow" }, icon("monitor", "dim"), h("span", { text: deviceLabel(s.user_agent) }), current ? chip("Este", "ok") : null),
-            current ? null : h("button", { class: "btn small danger", text: "Cerrar", onclick: async () => {
+          return h("div", {}, h("div", { class: "row tight grow" }, icon("monitor", "dim"), h("span", { text: deviceLabel(s.user_agent) }), current ? chip(t("This one"), "ok") : null),
+            current ? null : h("button", { class: "btn small danger", text: t("Close"), onclick: async () => {
               try { await api(`/api/auth/sessions/${s.id}`, { method: "DELETE" }); await reload(); } catch (e) { toast(e.message, "bad"); }
             } }));
         })),
-        others.length ? h("button", { class: "btn block danger", text: `Cerrar las otras ${others.length} sesiones`, onclick: async () => {
-          if (!(await confirmDialog("Cerrar otras sesiones", "Los demás dispositivos tendrán que volver a entrar con su passkey.", "Cerrar", true))) return;
-          try { for (const s of others) await api(`/api/auth/sessions/${s.id}`, { method: "DELETE" }); await reload(); toast("Sesiones cerradas"); } catch (e) { toast(e.message, "bad"); }
+        others.length ? h("button", { class: "btn block danger", text: count(others.length, "Close the other {n} session", "Close the other {n} sessions"), onclick: async () => {
+          if (!(await confirmDialog(t("Close other sessions"), t("The other devices will have to sign in again."), t("Close"), true))) return;
+          try { for (const s of others) await api(`/api/auth/sessions/${s.id}`, { method: "DELETE" }); await reload(); toast(t("Sessions closed")); } catch (e) { toast(e.message, "bad"); }
         } }) : null),
-      card(null, h("button", { class: "btn danger block", text: "Cerrar sesión en este dispositivo", onclick: async () => {
+      card(null, h("button", { class: "btn danger block", text: t("Sign out on this device"), onclick: async () => {
         try { await api("/api/auth/logout", { method: "POST" }); } catch (_) {}
         location.reload();
       } })),
@@ -378,7 +421,7 @@ export function mount(el, navigate, ctx) {
 
   function drawNav() {
     nav.replaceChildren(...SECTIONS.map(([id, label, ic]) =>
-      h("a", { href: `#/settings/${id}`, class: "subnav-item" + (st.section === id ? " on" : ""), "aria-current": st.section === id ? "page" : null }, icon(ic), h("span", { text: label }))));
+      h("a", { href: `#/settings/${id}`, class: "subnav-item" + (st.section === id ? " on" : ""), "aria-current": st.section === id ? "page" : null }, icon(ic), h("span", { text: t(label) }))));
     nav.querySelector(".on")?.scrollIntoView({ block: "nearest", inline: "center" });
   }
 
@@ -387,7 +430,7 @@ export function mount(el, navigate, ctx) {
     onToggle = () => {};
     drawNav();
     const [, label] = SECTIONS.find(([id]) => id === st.section);
-    content.replaceChildren(h("h2", { class: "section-title", text: label }), ...RENDER[st.section]());
+    content.replaceChildren(h("h2", { class: "section-title", text: t(label) }), ...RENDER[st.section]());
   }
 
   async function reload() {
@@ -424,75 +467,77 @@ export function mount(el, navigate, ctx) {
 
 async function pushState() {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return "unsupported";
-  const reg = await navigator.serviceWorker.getRegistration();
-  const sub = reg ? await reg.pushManager.getSubscription() : null;
-  if (sub) return "on";
+  const registration = await navigator.serviceWorker.getRegistration();
+  const subscription = registration ? await registration.pushManager.getSubscription() : null;
+  if (subscription) return "on";
   return typeof Notification !== "undefined" && Notification.permission === "denied" ? "denied" : "off";
 }
 
 async function enablePush(key) {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) throw new Error("Este navegador no admite avisos push");
-  const perm = await Notification.requestPermission();
-  if (perm !== "granted") throw new Error("Permiso de notificaciones denegado");
-  const reg = await navigator.serviceWorker.ready;
-  const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToBuf(key) }));
-  await api("/api/push/subscribe", { method: "POST", body: { subscription: sub.toJSON() } });
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) throw new Error(t("This browser does not support push alerts"));
+  if ((await Notification.requestPermission()) !== "granted") throw new Error(t("Notification permission denied"));
+  const registration = await navigator.serviceWorker.ready;
+  const subscription = (await registration.pushManager.getSubscription()) || (await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToBuf(key) }));
+  await api("/api/push/subscribe", { method: "POST", body: { subscription: subscription.toJSON() } });
 }
 
 async function disablePush() {
-  const reg = await navigator.serviceWorker.getRegistration();
-  const sub = reg ? await reg.pushManager.getSubscription() : null;
-  if (!sub) return;
-  await api("/api/push/unsubscribe", { method: "POST", body: { endpoint: sub.endpoint } });
-  await sub.unsubscribe();
+  const registration = await navigator.serviceWorker.getRegistration();
+  const subscription = registration ? await registration.pushManager.getSubscription() : null;
+  if (!subscription) return;
+  await api("/api/push/unsubscribe", { method: "POST", body: { endpoint: subscription.endpoint } });
+  await subscription.unsubscribe();
 }
+
+const percent = (value) => value * 100 + "%";
 
 function zoneEditor(initial, onChange) {
   let rects = initial.map((r) => r.slice());
-  const img = h("img", { alt: "Vista para marcar zonas", src: "/api/snapshot?t=" + Date.now(), draggable: "false" });
+  const img = h("img", { alt: t("Preview to mark zones"), src: "/api/snapshot?t=" + Date.now(), draggable: "false" });
   const box = h("div", { class: "zone" }, img);
-  const draw = () => {
-    box.querySelectorAll(".rect").forEach((n) => n.remove());
-    rects.forEach(([x, y, w, hh], i) => {
-      const r = h("div", { class: "rect" });
-      Object.assign(r.style, { left: x * 100 + "%", top: y * 100 + "%", width: w * 100 + "%", height: hh * 100 + "%" });
-      r.append(h("span", { class: "rect-n", text: String(i + 1) }));
-      box.append(r);
-    });
-    counter.textContent = rects.length ? `${rects.length} ${rects.length === 1 ? "zona" : "zonas"}` : "Sin zonas";
-  };
   const counter = h("span", { class: "muted" });
   let start = null;
   let temp = null;
-  const pos = (e) => {
-    const b = box.getBoundingClientRect();
-    return [Math.min(1, Math.max(0, (e.clientX - b.left) / b.width)), Math.min(1, Math.max(0, (e.clientY - b.top) / b.height))];
+
+  const place = (el, x, y, w, hh) => Object.assign(el.style, { left: percent(x), top: percent(y), width: percent(w), height: percent(hh) });
+  const emit = () => onChange(rects.map((r) => r.slice()));
+
+  const draw = () => {
+    box.querySelectorAll(".rect").forEach((n) => n.remove());
+    rects.forEach(([x, y, w, hh], i) => {
+      const rect = h("div", { class: "rect" }, h("span", { class: "rect-n", text: String(i + 1) }));
+      place(rect, x, y, w, hh);
+      box.append(rect);
+    });
+    counter.textContent = rects.length ? count(rects.length, "{n} zone", "{n} zones") : t("No zones");
+  };
+
+  const position = (e) => {
+    const bounds = box.getBoundingClientRect();
+    return [Math.min(1, Math.max(0, (e.clientX - bounds.left) / bounds.width)), Math.min(1, Math.max(0, (e.clientY - bounds.top) / bounds.height))];
   };
   box.addEventListener("pointerdown", (e) => {
-    start = pos(e);
+    start = position(e);
     temp = h("div", { class: "rect" });
     box.append(temp);
     box.setPointerCapture(e.pointerId);
   });
   box.addEventListener("pointermove", (e) => {
     if (!start) return;
-    const [x, y] = pos(e);
-    Object.assign(temp.style, {
-      left: Math.min(start[0], x) * 100 + "%", top: Math.min(start[1], y) * 100 + "%",
-      width: Math.abs(x - start[0]) * 100 + "%", height: Math.abs(y - start[1]) * 100 + "%",
-    });
+    const [x, y] = position(e);
+    place(temp, Math.min(start[0], x), Math.min(start[1], y), Math.abs(x - start[0]), Math.abs(y - start[1]));
   });
   box.addEventListener("pointerup", (e) => {
     if (!start) return;
-    const [x, y] = pos(e);
+    const [x, y] = position(e);
     const rect = [Math.min(start[0], x), Math.min(start[1], y), Math.abs(x - start[0]), Math.abs(y - start[1])];
     start = null;
     temp.remove();
-    if (rect[2] > 0.02 && rect[3] > 0.02 && rects.length < 10) { rects.push(rect); onChange(rects.map((r) => r.slice())); }
+    if (rect[2] > 0.02 && rect[3] > 0.02 && rects.length < 10) { rects.push(rect); emit(); }
     draw();
   });
-  const undo = h("button", { class: "btn small", text: "Deshacer", onclick: () => { rects.pop(); onChange(rects.map((r) => r.slice())); draw(); } });
-  const clear = h("button", { class: "btn small", text: "Borrar todas", onclick: () => { rects = []; onChange([]); draw(); } });
+  const undo = h("button", { class: "btn small", text: t("Undo"), onclick: () => { rects.pop(); emit(); draw(); } });
+  const clear = h("button", { class: "btn small", text: t("Clear all"), onclick: () => { rects = []; emit(); draw(); } });
   img.addEventListener("load", draw);
   draw();
   return h("div", { class: "stack" }, box, h("div", { class: "row" }, counter, h("div", { class: "row tight" }, undo, clear)));

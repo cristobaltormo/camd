@@ -6,14 +6,16 @@ import time
 
 log = logging.getLogger("camd.presence")
 
+PROBE_TIMEOUT_S = 5
 
-def _responds(ip: str) -> bool:
-    commands = [["ping", "-c", "1", "-W", "1", ip]]
+
+def responds(ip: str) -> bool:
+    probes = [["ping", "-c", "1", "-W", "1", ip]]
     if shutil.which("arping"):
-        commands.append(["arping", "-c", "2", "-w", "2", ip])
-    for cmd in commands:
+        probes.append(["arping", "-c", "2", "-w", "2", ip])
+    for probe in probes:
         try:
-            if subprocess.run(cmd, capture_output=True, timeout=5).returncode == 0:
+            if subprocess.run(probe, capture_output=True, timeout=PROBE_TIMEOUT_S).returncode == 0:
                 return True
         except (OSError, subprocess.TimeoutExpired):
             continue
@@ -21,16 +23,14 @@ def _responds(ip: str) -> bool:
 
 
 class Presence(threading.Thread):
-    """Tracks whether a tracked device (his phone) is on the LAN, with a grace period before 'away'."""
-
     def __init__(self, devices: list[str], grace_s: float, interval: float = 30.0):
         super().__init__(daemon=True, name="presence")
         self.devices = devices
         self.grace_s = grace_s
         self.interval = interval
+        self.external: bool | None = None
         self._last_seen = time.time()
         self._halt = threading.Event()
-        self.external: bool | None = None
 
     @property
     def configured(self) -> bool:
@@ -50,8 +50,6 @@ class Presence(threading.Thread):
 
     def run(self) -> None:
         while not self._halt.is_set():
-            for ip in self.devices:
-                if _responds(ip):
-                    self.mark_seen()
-                    break
+            if any(responds(ip) for ip in self.devices):
+                self.mark_seen()
             self._halt.wait(self.interval)

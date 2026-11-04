@@ -1,15 +1,18 @@
-import { api, h, icon, isOffline, LoginRequired, on, spinner, store, toast } from "./lib.js?v=5fdcb5d04d";
-import { authScreen, offlineScreen } from "./auth.js?v=5fdcb5d04d";
+import { authScreen, offlineScreen } from "./auth.js";
+import { api, h, icon, isOffline, LoginRequired, on, spinner, store, toast } from "./lib.js";
+import { t } from "./text.js";
 
-export const BUILD = "5fdcb5d04d";
+export const BUILD = "dev";
 
 const root = document.getElementById("app");
 
+let siteName = "Camera";
+
 const VIEWS = {
-  live: { label: "En vivo", load: () => import("./live.js?v=5fdcb5d04d") },
-  events: { label: "Eventos", load: () => import("./events.js?v=5fdcb5d04d") },
-  photos: { label: "Fotos", load: () => import("./photos.js?v=5fdcb5d04d") },
-  settings: { label: "Ajustes", load: () => import("./settings.js?v=5fdcb5d04d") },
+  live: { label: "Live", load: () => import("./live.js") },
+  events: { label: "Events", load: () => import("./events.js") },
+  photos: { label: "Photos", load: () => import("./photos.js") },
+  settings: { label: "Settings", load: () => import("./settings.js") },
 };
 
 const install = { event: null, available: () => !!install.event, async run() {
@@ -19,14 +22,14 @@ const install = { event: null, available: () => !!install.event, async run() {
   install.event = null;
 } };
 window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); install.event = e; });
-window.addEventListener("appinstalled", () => { install.event = null; toast("Aplicación instalada", "ok"); });
+window.addEventListener("appinstalled", () => { install.event = null; toast(t("App installed"), "ok"); });
 
 function registerWorker() {
   if (!("serviceWorker" in navigator)) return;
   const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register("/sw.js").catch(() => {});
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (hadController) toast("Hay una versión nueva de la aplicación", "ok", ["Recargar", () => location.reload()], true);
+    if (hadController) toast(t("There is a new version of the app"), "ok", [t("Reload"), () => location.reload()], true);
   });
 }
 
@@ -46,7 +49,7 @@ function checkBuild(serverBuild) {
     hardReload();
     return;
   }
-  toast("Hay una versión nueva de la aplicación", "ok", ["Actualizar", () => hardReload()], true);
+  toast(t("There is a new version of the app"), "ok", [t("Update"), () => hardReload()], true);
 }
 
 function navigate(path) {
@@ -86,7 +89,7 @@ async function route() {
     mod = await VIEWS[name].load();
   } catch (e) {
     console.error(e);
-    if (seq === routeSeq) shell.view.replaceChildren(h("div", { class: "empty" }, icon("signal"), h("h3", { text: "No se pudo cargar la sección" }), h("p", { class: "muted", text: "Puede que el móvil tenga guardada una versión antigua de la aplicación." }), h("button", { class: "btn primary", text: "Actualizar la aplicación", onclick: () => hardReload() })));
+    if (seq === routeSeq) shell.view.replaceChildren(h("div", { class: "empty" }, icon("signal"), h("h3", { text: t("The section could not be loaded") }), h("p", { class: "muted", text: t("This device may have an old version of the app stored.") }), h("button", { class: "btn primary", text: t("Update the app"), onclick: () => hardReload() })));
     return;
   }
   if (seq !== routeSeq) return;
@@ -101,7 +104,7 @@ async function route() {
     if (seq !== routeSeq || e instanceof LoginRequired) return;
     view.destroy();
     current = null;
-    shell.view.replaceChildren(h("div", { class: "empty" }, icon("signal"), h("p", { text: e.message }), h("button", { class: "btn", text: "Reintentar", onclick: () => route() })));
+    shell.view.replaceChildren(h("div", { class: "empty" }, icon("signal"), h("p", { text: e.message }), h("button", { class: "btn", text: t("Retry"), onclick: () => route() })));
     return;
   }
   if (seq !== routeSeq) return;
@@ -111,28 +114,26 @@ async function route() {
 
 function buildShell() {
   const banner = h("div", { id: "offline", class: "banner", hidden: !isOffline(), role: "status" },
-    h("span", { text: "Sin conexión con el servidor" }),
-    h("button", { class: "link", text: "Reintentar", onclick: () => location.reload() }));
+    h("span", { text: t("No connection to the server") }),
+    h("button", { class: "link", text: t("Retry"), onclick: () => location.reload() }));
   const view = h("div", { class: "view" });
 
   const links = Object.entries(VIEWS).map(([id, v]) => {
     const badge = h("span", { class: "badge-count", hidden: true });
-    const a = h("a", { href: `#/${id}`, class: "nav-item", "data-page": id }, icon(id), h("span", { class: "nav-label", text: v.label }), badge);
+    const a = h("a", { href: `#/${id}`, class: "nav-item", "data-page": id }, icon(id), h("span", { class: "nav-label", text: t(v.label) }), badge);
     return { id, a, badge };
   });
   const statusDot = h("span", { class: "dot" });
-  const statusText = h("span", { text: "Conectando..." });
+  const statusText = h("span", { text: t("Connecting...") });
   const statusSub = h("span", { class: "muted", text: "" });
   const status = h("div", { class: "side-status" }, statusDot, h("div", {}, statusText, statusSub));
 
   const sidebar = h("aside", { class: "sidebar" },
-    h("div", { class: "brand" }, icon("logo", "brand-logo"), h("span", { class: "brand-name", text: "Habitación" })),
-    h("nav", { class: "nav", "aria-label": "Secciones" }, links.map((l) => l.a)),
+    h("div", { class: "brand" }, icon("logo", "brand-logo"), h("span", { class: "brand-name", text: siteName })),
+    h("nav", { class: "nav", "aria-label": t("Sections") }, links.map((l) => l.a)),
     status);
-  const tabs = h("nav", { class: "tabs", "aria-label": "Secciones" }, h("div", {}, links.map((l) => {
-    const clone = h("a", { href: `#/${l.id}`, class: "tab", "data-page": l.id }, icon(l.id), h("span", { text: VIEWS[l.id].label }), h("span", { class: "badge-count", hidden: true }));
-    return clone;
-  })));
+  const tabs = h("nav", { class: "tabs", "aria-label": t("Sections") }, h("div", {}, links.map((l) =>
+    h("a", { href: `#/${l.id}`, class: "tab", "data-page": l.id }, icon(l.id), h("span", { text: t(VIEWS[l.id].label) }), h("span", { class: "badge-count", hidden: true })))));
 
   root.replaceChildren(h("div", { class: "shell" }, sidebar, h("main", { class: "content" }, banner, view), tabs));
 
@@ -144,13 +145,13 @@ function buildShell() {
         el.classList.toggle("on", on_);
         if (on_) el.setAttribute("aria-current", "page"); else el.removeAttribute("aria-current");
       });
-      document.title = `${VIEWS[name].label} · Habitación`;
+      document.title = `${t(VIEWS[name].label)} · ${siteName}`;
     },
     setStatus(s) {
       const off = !s.camera.enabled;
       const tone = off || s.camera.standby ? "warn" : !s.camera.online ? "bad" : s.armed ? "ok" : "";
       statusDot.className = "dot " + tone;
-      statusText.textContent = off ? "Cámara desactivada" : s.camera.standby ? "Cámara apagada" : !s.camera.online ? "Cámara sin señal" : s.armed ? "Vigilando" : "No vigila";
+      statusText.textContent = off ? t("Camera disabled") : s.camera.standby ? t("Camera off") : !s.camera.online ? t("Camera has no signal") : s.armed ? t("Watching") : t("Not watching");
       statusSub.textContent = s.camera.rssi && s.camera.online ? `${s.camera.rssi} dBm` : "";
     },
     setBadge(n) {
@@ -193,9 +194,11 @@ async function start() {
   try {
     state = await api("/api/auth/state");
   } catch (_) {
-    root.replaceChildren(offlineScreen());
+    root.replaceChildren(offlineScreen(siteName));
     return;
   }
+  siteName = state.site_name;
+  document.title = siteName;
   document.body.classList.toggle("auth", !state.logged_in);
   if (!state.logged_in) {
     root.replaceChildren(authScreen(state, () => location.reload()));
@@ -210,7 +213,7 @@ function report(reason) {
   console.error(reason);
   if (Date.now() - lastReport < 5000) return;
   lastReport = Date.now();
-  toast("Algo ha fallado. Si se repite, recarga la aplicación.", "bad");
+  toast(t("Something went wrong. If it happens again, reload the app."), "bad");
 }
 window.addEventListener("unhandledrejection", (e) => report(e.reason));
 window.addEventListener("error", (e) => report(e.error || e.message));
@@ -218,7 +221,7 @@ window.addEventListener("error", (e) => report(e.error || e.message));
 on("login", () => location.reload());
 on("access", () => {
   const last = Number(sessionStorage.getItem("cam.accessReload") || 0);
-  if (Date.now() - last < 15000) return toast("La sesión de Cloudflare ha caducado. Recarga la página para entrar de nuevo.", "bad", ["Recargar", () => location.reload()], true);
+  if (Date.now() - last < 15000) return toast(t("The access session has expired. Reload the page to sign in again."), "bad", [t("Reload"), () => location.reload()], true);
   sessionStorage.setItem("cam.accessReload", String(Date.now()));
   location.reload();
 });

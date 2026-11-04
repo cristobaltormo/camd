@@ -1,4 +1,5 @@
 """Armed soak against the real camera with a throwaway data dir: counts false events in an empty room."""
+
 import os
 import sys
 import tempfile

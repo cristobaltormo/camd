@@ -7,8 +7,6 @@ MODES = ("auto", "armed", "disarmed")
 
 
 class Arming:
-    """Decides whether motion should be recorded right now."""
-
     def __init__(self, db: Database, presence: Presence):
         self.db = db
         self.presence = presence
@@ -42,16 +40,10 @@ class Arming:
         if self.snooze_until > time.time():
             return False, "snoozed"
         mode = self.mode
-        if mode == "armed":
-            return True, "manual"
-        if mode == "disarmed":
-            return False, "manual"
+        if mode != "auto":
+            return mode == "armed", "manual"
         if not self.presence.configured:
             return False, "auto-without-device"
         if self.presence.is_home:
             return False, "home"
         return True, "away"
-
-    @property
-    def armed(self) -> bool:
-        return self.decision()[0]

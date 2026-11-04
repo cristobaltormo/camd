@@ -1,7 +1,10 @@
 .venv/
-firmware/.pio/
+.claude/
+.pio/
 __pycache__/
 *.pyc
 .pytest_cache/
-foto.jpg
-evento.jpg
+.ruff_cache/
+server/camd/build.txt
+*.egg-info/
+.env
