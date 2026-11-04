@@ -102,3 +102,12 @@ def test_mqtt_commands_reach_the_runtime():
     assert received == {"presence": True, "mode": "armed", "privacy": True}
     mqtt._message(None, None, Message("cam/presence/set", "auto"))
     assert received["presence"] is None
+
+
+@pytest.mark.parametrize("endpoint", ["http://push.example.org/x", "https://127.0.0.1/x", "https://192.168.1.5/x", "https://localhost/x", "ftp://a/b"])
+def test_push_subscriptions_must_be_public_https(env, endpoint):
+    assert env.post("/api/push/subscribe", {"subscription": {"endpoint": endpoint}}).status_code == 400
+
+
+def test_a_public_https_push_endpoint_is_accepted(env):
+    assert env.post("/api/push/subscribe", {"subscription": {"endpoint": "https://fcm.googleapis.com/send/abc", "keys": {}}}).status_code == 200

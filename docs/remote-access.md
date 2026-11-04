@@ -40,4 +40,4 @@ WireGuard or Tailscale to your home network and the plain address. Passkeys are 
 | `origin` | exactly what the browser shows, scheme and port included |
 | `rp_id` | the host name only, no scheme, no port |
 | `secure_cookies` | `true` over HTTPS |
-| `trust_proxy` | `true` only when the proxy sets `X-Forwarded-For` (nginx, Caddy) or `CF-Connecting-IP` (Cloudflare) |
+| `trust_proxy` | `true` exactly when a proxy is in front: the last `X-Forwarded-For` entry is then taken as the client address for rate limiting. Left `false` behind a proxy, all visitors share one limit; set `true` with no proxy, a client could forge its address |

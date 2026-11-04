@@ -332,4 +332,7 @@ class DetectionWorker(threading.Thread):
                 log.exception("detection failed")
                 continue
             self.last_ms = (time.perf_counter() - started) * 1000
-            self.on_result(job[0], job[1], found)
+            try:
+                self.on_result(job[0], job[1], found)
+            except Exception:
+                log.exception("detection result handler failed")

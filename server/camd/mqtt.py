@@ -34,6 +34,10 @@ class Mqtt:
         self.enabled = bool(cfg.mqtt_host)
         self._last: dict[str, str] = {}
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"camd-{self.topic}")
+        if cfg.mqtt_user:
+            self.client.username_pw_set(cfg.mqtt_user, cfg.mqtt_password)
+        if cfg.mqtt_tls:
+            self.client.tls_set()
         self.client.will_set(f"{self.topic}/status", "offline", retain=True)
         self.client.on_connect = self._connected
         self.client.on_message = self._message

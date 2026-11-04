@@ -103,3 +103,18 @@ def test_a_request_from_the_same_host_is_accepted_even_if_it_is_not_the_configur
     assert env.client.post("/api/mode", json={"mode": "armed"}, headers=other).status_code == 200
     forged = {"Origin": "http://evil.example", "Host": "192.168.1.50:8180"}
     assert env.client.post("/api/mode", json={"mode": "armed"}, headers=forged).status_code == 403
+
+
+def test_the_client_address_comes_from_the_proxy_not_from_the_client(env):
+    from camd.api.deps import client_ip
+
+    class Req:
+        client = type("C", (), {"host": "10.0.0.2"})()
+
+        def __init__(self, headers):
+            self.headers = headers
+
+    forged = Req({"x-forwarded-for": "1.2.3.4, 203.0.113.9", "cf-connecting-ip": "6.6.6.6"})
+    assert client_ip(forged, True) == "203.0.113.9"
+    assert client_ip(forged, False) == "10.0.0.2"
+    assert client_ip(Req({"cf-connecting-ip": "6.6.6.6"}), True) == "6.6.6.6"

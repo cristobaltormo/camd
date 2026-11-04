@@ -103,6 +103,8 @@ class Runtime:
             self.analyzer.poke()
 
     def start(self) -> None:
+        if not self.cfg.camera_host or not self.cfg.camera_token:
+            log.warning("camera_host or the camera token is empty: set camera_host and CAMD_CAMERA_TOKEN")
         self.recorder.recover()
         self.presence.start()
         self.mqtt.start()
@@ -162,7 +164,7 @@ class Runtime:
             log.exception("frame pipeline error")
 
     def _request_analysis(self, ts: float, jpeg: bytes, motion: bool) -> None:
-        if not self._analysis_ready():
+        if not self._analysis_ready() or not self._armed():
             return
         if motion:
             gap = DETECT_ACTIVE_INTERVAL_S
@@ -265,7 +267,7 @@ class Runtime:
 
     def status(self, version: str, build: str) -> dict:
         armed, reason = self.arming.decision()
-        last = self.db.one("SELECT * FROM events ORDER BY start_ts DESC LIMIT 1")
+        last = self.db.one("SELECT * FROM events WHERE status='done' AND (analyzed=0 OR confirmed=1) ORDER BY start_ts DESC LIMIT 1")
         info = self.camera_info or {}
         usage = self.db.one("SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS bytes FROM events")
         photo_count, photo_bytes = self.photos.usage()

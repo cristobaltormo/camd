@@ -27,7 +27,8 @@ def services(request: Request) -> Services:
 
 def client_ip(request: Request, trust_proxy: bool) -> str:
     if trust_proxy:
-        forwarded = request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        chain = [part.strip() for part in request.headers.get("x-forwarded-for", "").split(",") if part.strip()]
+        forwarded = chain[-1] if chain else request.headers.get("cf-connecting-ip")
         if forwarded:
             return forwarded
     return request.client.host if request.client else "unknown"

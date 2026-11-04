@@ -120,3 +120,48 @@ def test_status_exposes_fresh_detections_only(env):
     assert env.get("/api/status").json()["detection"]["items"][0]["label"] == "person"
     env.rt.last_detections = (time.time() - 60, [person])
     assert env.get("/api/status").json()["detection"]["items"] == []
+
+
+def test_a_failing_result_handler_does_not_kill_the_detector_thread(tmp_path):
+    from camd import detect
+
+    class Settings:
+        detection = "alert"
+        detect_labels = ["person"]
+        detect_confidence = 0.5
+        models_dir = tmp_path
+
+    class Fake:
+        labels = ("person",)
+        min_confidence = 0.5
+
+        def detect(self, jpeg):
+            return []
+
+    calls = []
+
+    def flaky(ts, jpeg, found):
+        calls.append(ts)
+        raise RuntimeError("database is locked")
+
+    worker = detect.DetectionWorker(Settings(), flaky)
+    worker._detector, worker.state = Fake(), "ready"
+    worker.start()
+    for ts in (1.0, 2.0):
+        for _ in range(100):
+            if worker.submit(ts, b"x"):
+                break
+            time.sleep(0.02)
+        for _ in range(100):
+            if ts in calls:
+                break
+            time.sleep(0.02)
+    worker.stop()
+    assert calls == [1.0, 2.0]
+
+
+def test_the_last_event_card_skips_unfinished_and_unconfirmed_events(env):
+    env.db.execute("INSERT INTO events(start_ts, end_ts, status, analyzed, confirmed) VALUES(100, 110, 'done', 1, 1)")
+    env.db.execute("INSERT INTO events(start_ts, end_ts, status, analyzed, confirmed) VALUES(200, 210, 'done', 1, 0)")
+    env.db.execute("INSERT INTO events(start_ts, status) VALUES(300, 'recording')")
+    assert env.get("/api/status").json()["last_event"]["start"] == 100

@@ -64,3 +64,14 @@ def test_partial_light_still_counts_as_change_when_it_is_large():
     img = scene()
     img[150:450, 300:700] = 230
     assert d.process(jpeg(img)).motion
+
+
+def test_a_change_of_resolution_restarts_the_background_instead_of_failing():
+    import cv2
+
+    d = MotionDetector()
+    warmed(d)
+    small = cv2.resize(scene(), (640, 480))
+    assert not d.process(jpeg(small)).motion
+    for _ in range(3):
+        assert not d.process(jpeg(small)).motion

@@ -7,6 +7,8 @@
 
 static bool running = false;
 static uint8_t failedFrames = 0;
+static volatile int framesInUse = 0;
+static const uint32_t STOP_WAIT_MS = 3000;
 static const uint8_t STUCK_AFTER_FAILURES = 30;
 
 struct Control {
@@ -58,7 +60,7 @@ static camera_config_t buildConfig() {
   c.xclk_freq_hz = 20000000;
   c.pixel_format = PIXFORMAT_JPEG;
   if (psramFound()) {
-    c.frame_size = FRAMESIZE_SVGA;
+    c.frame_size = FRAMESIZE_UXGA;
     c.jpeg_quality = 12;
     c.fb_count = 2;
     c.fb_location = CAMERA_FB_IN_PSRAM;
@@ -83,13 +85,30 @@ bool cameraStart() {
   }
   running = true;
   failedFrames = 0;
+  sensor_t *sensor = esp_camera_sensor_get();
+  if (sensor != nullptr && psramFound()) sensor->set_framesize(sensor, FRAMESIZE_SVGA);
   return true;
+}
+
+camera_fb_t *cameraFrame() {
+  camera_fb_t *frame = running ? esp_camera_fb_get() : nullptr;
+  if (frame != nullptr) framesInUse = framesInUse + 1;
+  return frame;
+}
+
+void cameraRelease(camera_fb_t *frame) {
+  esp_camera_fb_return(frame);
+  framesInUse = framesInUse - 1;
 }
 
 void cameraStop() {
   if (!running) return;
   running = false;
-  delay(300);
+  uint32_t waited = 0;
+  while (framesInUse > 0 && waited < STOP_WAIT_MS) {
+    delay(20);
+    waited += 20;
+  }
   esp_camera_deinit();
 }
 

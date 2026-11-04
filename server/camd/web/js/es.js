@@ -5,6 +5,8 @@ export default {
   "Retry": "Reintentar",
   "Sign in with passkey": "Entrar con passkey",
   "Verifying...": "Verificando...",
+  "Passkeys": "Passkeys",
+  "Passkey": "Passkey",
   "Password": "Contraseña",
   "Sign in with password": "Entrar con contraseña",
   "Enrollment code": "Código de alta",

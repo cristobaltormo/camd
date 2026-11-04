@@ -1,5 +1,3 @@
-// Opens every route of a running instance in headless Chromium and fails on page errors or missing icons.
-// BASE=https://cam.cristobal.cc COOKIE=<session token> RESOLVE="MAP cam.cristobal.cc 192.168.1.73" SHOTS=/tmp/dir node --experimental-websocket tools/ui-smoke.mjs
 import { spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

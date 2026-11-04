@@ -17,6 +17,7 @@ static void startOta() {
   ArduinoOTA.setHostname(settings.hostname.c_str());
   ArduinoOTA.setPassword(settings.token.c_str());
   ArduinoOTA.onStart([]() { esp_task_wdt_delete(nullptr); });
+  ArduinoOTA.onError([](ota_error_t) { esp_task_wdt_add(nullptr); });
   ArduinoOTA.begin();
 }
 

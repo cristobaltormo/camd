@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { isNoise, matches, reconcile } from "../camd/web/js/events.js";
+import { isNoise, matches, queryFor, reconcile } from "../camd/web/js/events.js";
 import { deviceLabel, fmtAgo, fmtBytes, fmtDur, fmtUptime, labelName } from "../camd/web/js/lib.js";
 import { count, resolveLanguage, setLanguage, t } from "../camd/web/js/text.js";
 
@@ -88,4 +88,10 @@ test("reconcile drops deleted events inside the fetched range and keeps older pa
   assert.deepEqual(reconcile(current, fresh, 3).map((x) => x.id), [6, 5, 3, 2, 1]);
   assert.deepEqual(reconcile(current, [e(5, 500)], 60).map((x) => x.id), [5]);
   assert.deepEqual(reconcile(current, [], 60), []);
+});
+
+test("the list asks the server for what the filter needs", () => {
+  assert.equal(queryFor("all"), "&hide_unconfirmed=true");
+  assert.equal(queryFor("people"), "&hide_unconfirmed=true&label=person");
+  assert.equal(queryFor("noise"), "");
 });

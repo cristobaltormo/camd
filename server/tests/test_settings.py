@@ -93,3 +93,10 @@ def test_resolution_is_a_known_size_and_is_sent_to_the_camera(env, monkeypatch):
     env.post("/api/settings", {"camera_framesize": 0})
     env.rt.apply_camera()
     assert "framesize" not in sent[-1]
+
+
+@pytest.mark.parametrize("value", [1, 3, 64, True])
+def test_jpeg_quality_must_be_zero_or_within_the_camera_range(env, value):
+    assert env.post("/api/settings", {"camera_quality": value}).status_code in (400, 422)
+    assert env.post("/api/settings", {"camera_quality": 0}).status_code == 200
+    assert env.post("/api/settings", {"camera_quality": 12}).status_code == 200

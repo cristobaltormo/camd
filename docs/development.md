@@ -8,14 +8,14 @@ server/camd/     the service
 server/tests/    pytest suite
 server/webtests/ Node tests for the interface helpers and the translation catalog
 tools/           fake camera, browser tests, real-camera checks
-deploy/          Dockerfile helpers, systemd unit, proxy examples, installer
+deploy/          systemd unit, proxy examples, example configs, installer (the Dockerfile is at the root)
 ```
 
 ## Running the tests
 
 ```bash
 cd server
-pip install -e '.[dev]' opencv-python-headless
+pip install -e '.[dev]'
 pytest -q                               # FFmpeg must be installed
 node --test webtests/
 ruff check . && ruff format --check .
@@ -58,7 +58,7 @@ User-facing text uses English sentences as keys: `t("Delete event")`. Spanish li
 Stop the service first: the camera serves one stream client at a time.
 
 ```bash
-export CAM_HOST=192.168.1.93 CAMD_CAMERA_TOKEN=...
+export CAM_HOST=192.168.1.50 CAMD_CAMERA_TOKEN=...
 python tools/camera_check.py trace --seconds 60    # brightness and motion score per second
 python tools/camera_check.py soak --seconds 300    # armed run, counts false events
 ```

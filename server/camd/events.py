@@ -23,6 +23,7 @@ MIN_FPS = 1.0
 MAX_FPS = 30.0
 STALL_S = 20.0
 ENCODER_NICE = 10
+ENCODER_TIMEOUT_S = 600
 DETECTION_RANK_BASE = 1.0
 RECENT_DETECTION_S = 4.0
 
@@ -120,7 +121,12 @@ class EventRecorder:
             self._begin("motion", ts)
 
     def _recording_frame(self, rec: Recording, ts: float, jpeg: bytes, motion: bool, score: float, armed: bool) -> None:
-        rec.spool.append(ts, jpeg)
+        try:
+            rec.spool.append(ts, jpeg)
+        except OSError:
+            log.exception("event %s: cannot write the recording, closing it", rec.event_id)
+            self._end()
+            return
         rec.peak_score = max(rec.peak_score, score)
         rec.consider(score, jpeg)
         if motion:
@@ -250,7 +256,7 @@ class EventRecorder:
             self._spawn(Recording(event_id, spool, row["start_ts"], row["kind"], analyzed=False))
         if self.cfg.spool_dir.is_dir():
             for leftover in self.cfg.spool_dir.glob("*.spool"):
-                if int(leftover.stem) not in interrupted:
+                if not leftover.stem.isdigit() or int(leftover.stem) not in interrupted:
                     leftover.unlink(missing_ok=True)
 
     def _finalize(self, rec: Recording) -> None:
@@ -337,11 +343,16 @@ class EventRecorder:
             command = [nice, "-n", str(ENCODER_NICE), *command]
         proc = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
-            for _, jpeg in spool.frames():
-                proc.stdin.write(jpeg)
-            proc.stdin.close()
-        except BrokenPipeError:
-            pass
-        error = proc.stderr.read().decode(errors="replace")
-        if proc.wait() != 0:
-            raise RuntimeError(f"ffmpeg failed: {error.strip()}")
+            try:
+                for _, jpeg in spool.frames():
+                    proc.stdin.write(jpeg)
+                proc.stdin.close()
+            except BrokenPipeError:
+                pass
+            error = proc.stderr.read().decode(errors="replace")
+            if proc.wait(timeout=ENCODER_TIMEOUT_S) != 0:
+                raise RuntimeError(f"ffmpeg failed: {error.strip()}")
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()

@@ -11,6 +11,7 @@ APP=/opt/camd
 DATA=/var/lib/camd
 CONF=/etc/camd
 
+python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null || { echo "Python 3.11 or newer is required (Debian 12, Ubuntu 24.04 or newer)" >&2; exit 1; }
 apt-get update -qq
 apt-get install -y --no-install-recommends python3 python3-venv ffmpeg iputils-ping iputils-arping
 
@@ -25,7 +26,7 @@ python3 "$STAGE/server/stamp.py" "$STAGE/server/camd/web" >/dev/null
 
 python3 -m venv "$APP/venv"
 "$APP/venv/bin/pip" install --quiet --upgrade pip
-"$APP/venv/bin/pip" install --quiet --upgrade "$STAGE/server" opencv-python-headless
+"$APP/venv/bin/pip" install --quiet --upgrade "$STAGE/server"
 
 [ -f "$CONF/config.toml" ] || install -m 0644 "$ROOT/deploy/config.example.toml" "$CONF/config.toml"
 if [ ! -f "$CONF/env" ]; then
@@ -40,7 +41,7 @@ cat <<MSG
 
 camd is installed but not started.
   1. Put the camera token in $CONF/env (CAMD_CAMERA_TOKEN=...)
-  2. Edit $CONF/config.toml: camera_host, origin, rp_id
+  2. Edit $CONF/config.toml: camera_host and origin (see deploy/config.https.example.toml for HTTPS)
   3. Create a way to sign in:  sudo -u camd CAMD_CONFIG=$CONF/config.toml $APP/venv/bin/camd-ctl password
   4. systemctl start camd
 MSG

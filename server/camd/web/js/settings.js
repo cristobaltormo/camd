@@ -385,13 +385,13 @@ export function mount(el, navigate, ctx) {
     const codeBox = h("div");
     const others = d.sessions.filter((s) => s.id !== d.current_session);
     const passkeys = d.credentials.length ? [h("div", { class: "list" }, d.credentials.map((c) =>
-      h("div", {}, h("div", { class: "row tight grow" }, icon("key", "dim"), h("span", { text: c.name || "Passkey" })),
+      h("div", {}, h("div", { class: "row tight grow" }, icon("key", "dim"), h("span", { text: c.name || t("Passkey") })),
         h("button", { class: "btn small danger", text: t("Remove"), onclick: async () => {
           if (!(await confirmDialog(t("Remove passkey"), t("That device will no longer be able to sign in."), t("Remove"), true))) return;
           try { await api(`/api/auth/credentials/${encodeURIComponent(c.id)}`, { method: "DELETE" }); await reload(); } catch (e) { toast(e.message, "bad"); }
         } })))) ] : [h("div", { class: "muted", text: t("No passkeys registered.") })];
     return [
-      card("Passkeys", ...passkeys,
+      card(t("Passkeys"), ...passkeys,
         h("button", { class: "btn block", text: t("Add another device"), onclick: async () => {
           try {
             const r = await api("/api/auth/enroll-code", { method: "POST" });

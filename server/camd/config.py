@@ -10,7 +10,7 @@ TRUE_WORDS = {"1", "true", "yes", "on"}
 
 @dataclass
 class Config:
-    camera_host: str = "192.168.1.93"
+    camera_host: str = ""
     camera_api_port: int = 80
     camera_stream_port: int = 81
     camera_token: str = ""
@@ -30,6 +30,9 @@ class Config:
     ntfy_token: str = ""
     mqtt_host: str = ""
     mqtt_port: int = 1883
+    mqtt_user: str = ""
+    mqtt_password: str = ""
+    mqtt_tls: bool = False
     mqtt_topic: str = "camd"
     mqtt_discovery: bool = True
     presence_devices: list[str] = field(default_factory=list)

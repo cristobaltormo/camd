@@ -33,6 +33,8 @@ export function reconcile(current, fresh, pageSize = PAGE) {
   return fresh.concat(current.filter((e) => e.start < floor));
 }
 
+export const queryFor = (filter) => (filter === "noise" ? "" : "&hide_unconfirmed=true") + (filter === "people" ? "&label=person" : "");
+
 const signature = (events) => events.map((e) => `${e.id}:${e.status}:${e.keep ? 1 : 0}:${e.labels.join("+")}`).join(",");
 
 const labelBadge = (labels) => {
@@ -61,7 +63,7 @@ export function mount(el, navigate) {
 
   async function load(reset) {
     const before = !reset && st.events.length ? st.events[st.events.length - 1].start : null;
-    const { events } = await api(`/api/events?limit=${PAGE}` + (before ? `&before=${before}` : ""));
+    const { events } = await api(`/api/events?limit=${PAGE}${queryFor(st.filter)}` + (before ? `&before=${before}` : ""));
     if (destroyed) return;
     st.events = reset ? events : st.events.concat(events);
     st.done = events.length < PAGE;
@@ -73,7 +75,7 @@ export function mount(el, navigate) {
   function drawChips() {
     if (!filtersInUse().some(([id]) => id === st.filter)) st.filter = "all";
     chips.replaceChildren(...filtersInUse().map(([id, label]) =>
-      h("button", { class: "filter" + (st.filter === id ? " on" : ""), text: t(label), "aria-pressed": String(st.filter === id), onclick: () => { st.filter = id; store.set("eventsFilter", id); draw(); } })
+      h("button", { class: "filter" + (st.filter === id ? " on" : ""), text: t(label), "aria-pressed": String(st.filter === id), onclick: async () => { st.filter = id; store.set("eventsFilter", id); try { await load(true); } catch (e) { toast(e.message, "bad"); } draw(); } })
     ));
   }
 
@@ -261,7 +263,7 @@ export function mount(el, navigate) {
   async function poll() {
     if (destroyed || document.hidden || st.selecting) return;
     try {
-      const { events } = await api(`/api/events?limit=${PAGE}`);
+      const { events } = await api(`/api/events?limit=${PAGE}${queryFor(st.filter)}`);
       if (destroyed) return;
       const merged = reconcile(st.events, events);
       if (signature(merged) !== signature(st.events)) {

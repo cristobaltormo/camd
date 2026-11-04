@@ -12,6 +12,7 @@ dependencies = [
     "pywebpush",
     "requests",
     "numpy",
+    "opencv-python-headless>=4.7",
 ]
 
 [project.optional-dependencies]

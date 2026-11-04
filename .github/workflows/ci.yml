@@ -20,7 +20,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
-      - run: pip install -e '.[dev]' opencv-python-headless
+      - run: pip install -e '.[dev]'
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q

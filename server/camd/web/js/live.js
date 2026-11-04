@@ -15,6 +15,8 @@ const ACTIVE_POLL_MS = 1000;
 const WAKE_WINDOW_MS = 25000;
 const PLUG_WINDOW_MS = 60000;
 const RETRY_CAP_MS = 15000;
+const FREEZE_CHECK_MS = 4000;
+const FREEZE_CHECKS = 3;
 
 const clock = (s) => `${Math.floor(s / 60)}:${String(Math.max(0, Math.floor(s % 60))).padStart(2, "0")}`;
 
@@ -91,6 +93,27 @@ export function mount(el, navigate) {
       }
     }, 250);
   }
+
+  const probe = document.createElement("canvas");
+  probe.width = probe.height = 8;
+  let lastSample = "";
+  let stalledChecks = 0;
+  const sampleImage = () => {
+    try {
+      const context = probe.getContext("2d", { willReadFrequently: true });
+      context.drawImage(img, 0, 0, 8, 8);
+      return context.getImageData(0, 0, 8, 8).data.join(",");
+    } catch (_) {
+      return "";
+    }
+  };
+  const frozenWatch = setInterval(() => {
+    if (phase !== "playing") { stalledChecks = 0; return; }
+    const sample = sampleImage();
+    stalledChecks = sample && sample === lastSample ? stalledChecks + 1 : 0;
+    lastSample = sample;
+    if (stalledChecks >= FREEZE_CHECKS) { stalledChecks = 0; stopStream(); startStream(); }
+  }, FREEZE_CHECK_MS);
 
   img.addEventListener("error", () => {
     if (phase === "idle" || destroyed) return;
@@ -324,6 +347,7 @@ export function mount(el, navigate) {
       destroyed = true;
       timers.forEach(clearTimeout);
       clearInterval(clipTicker);
+      clearInterval(frozenWatch);
       stopStream();
       document.removeEventListener("visibilitychange", onVisible);
       document.removeEventListener("keydown", onKey);

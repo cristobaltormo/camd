@@ -19,7 +19,7 @@ The ESP32-CAM-MB base board enters flashing mode by itself. With a bare board, b
 
 With no wifi configured the camera opens an access point called `camd-setup-XXXX` and a captive page. Pick your 2.4 GHz network, type its password and copy the access token (24 hex characters, generated in your browser). Save: the camera restarts and joins your wifi.
 
-The same page comes back by itself if the camera cannot reach its wifi for two minutes, so a changed router password is recoverable without cables. If it stays offline for ten minutes it reboots.
+The same page comes back by itself if the camera cannot reach its wifi for two minutes, so a changed router password is recoverable without cables. Because the network is open, an already configured camera only accepts new settings when you also type its current token. If it stays offline for ten minutes it reboots.
 
 ## Finding it
 
@@ -28,7 +28,7 @@ The camera announces itself over mDNS as `camd-<last 3 bytes of its MAC>.local`.
 ## Over-the-air updates
 
 ```bash
-export CAM_HOST=192.168.1.93 CAM_TOKEN=<the token>
+export CAM_HOST=192.168.1.50 CAM_TOKEN=<the token>
 pio run -e esp32cam-ota -t upload
 ```
 
@@ -38,7 +38,7 @@ pio run -e esp32cam-ota -t upload
 |---|---|
 | `status` | firmware, host name, wifi state, address, reset reason |
 | `scan` | list wifi networks |
-| `ssid X`, `pass Y`, `token Z`, `hostname N` | store settings |
+| `ssid X`, `pass Y`, `token Z`, `hostname N` | store settings (the wifi ones apply after a reboot) |
 | `portal` | open the setup page now |
 | `reboot`, `wipe` | restart; erase every stored setting |
 
@@ -64,6 +64,8 @@ A hardware watchdog restarts the board if the main loop stalls, and the camera r
 
 ## Notes
 
+- Only the AI-Thinker pin layout is built in (`firmware/src/pins.h`). Other ESP32-CAM boards need their own pins.
+- Tokens are 12 to 64 letters, digits, `-` or `_`.
 - The board only joins 2.4 GHz networks. The external antenna connector matters: without the antenna fitted the signal can be 30 dB weaker.
 - The OV2640 has no infrared filter removal: in the dark it sees nothing. Light the room, or use the `led` control as a night light.
 - The access token is stored in the board's flash in clear text, as is the wifi password. Anyone with physical access can read them.

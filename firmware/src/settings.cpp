@@ -27,6 +27,11 @@ void Settings::load() {
 }
 
 void Settings::save(const char *key, const String &value) {
+  String name(key);
+  if (name == "ssid") ssid = value;
+  else if (name == "pass") password = value;
+  else if (name == "token") token = value;
+  else if (name == "hostname") hostname = value;
   Preferences prefs;
   prefs.begin(NAMESPACE, false);
   prefs.putString(key, value);

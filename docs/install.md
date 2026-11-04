@@ -16,6 +16,7 @@ Edit `.env`:
 | `CAMD_CAMERA_HOST` | address or `.local` name of the camera |
 | `CAMD_CAMERA_TOKEN` | the token generated on the camera setup page |
 | `CAMD_ORIGIN` | the address people will type, for example `http://192.168.1.20:8180` |
+| `CAMD_RP_ID`, `CAMD_SECURE_COOKIES`, `CAMD_TRUST_PROXY` | only when you serve HTTPS behind a proxy (see [remote access](remote-access.md)) |
 | `CAMD_PRESENCE_DEVICES` | comma separated phone IPs that mean "I am home" (optional) |
 
 Any key of the [configuration](configuration.md) can be set as `CAMD_<KEY>`.
@@ -39,7 +40,7 @@ sudo deploy/install.sh
 It creates a `camd` user, a virtualenv in `/opt/camd`, the configuration in `/etc/camd` and a hardened systemd unit. Then:
 
 1. put the token in `/etc/camd/env` as `CAMD_CAMERA_TOKEN=...`;
-2. edit `/etc/camd/config.toml`: `camera_host`, `origin` and `rp_id`;
+2. edit `/etc/camd/config.toml`: `camera_host` and `origin`. The default is plain HTTP on the LAN; `deploy/config.https.example.toml` is the version for HTTPS behind a proxy;
 3. create the login: `sudo -u camd CAMD_CONFIG=/etc/camd/config.toml /opt/camd/venv/bin/camd-ctl password`;
 4. `sudo systemctl start camd` and read the log with `journalctl -u camd -f`.
 

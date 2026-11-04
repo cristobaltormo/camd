@@ -44,7 +44,7 @@ SPEC: dict[str, Pref] = {
     "camera_hmirror": Pref("bool"),
     "camera_brightness": number(-2, 2, "int"),
     "camera_contrast": number(-2, 2, "int"),
-    "camera_quality": number(0, 63, "int"),
+    "camera_quality": Pref("quality"),
     "camera_framesize": Pref("choice_int", options=("0", "5", "8", "9", "10")),
     "detection": Pref("choice", options=DETECTION_MODES),
     "language": Pref("choice", options=LANGUAGES),
@@ -67,6 +67,10 @@ def validate(key: str, value: Any) -> Any:
     if spec.kind == "choice":
         if value not in spec.options:
             raise ValueError(f"{key} must be one of {', '.join(spec.options)}")
+        return value
+    if spec.kind == "quality":
+        if isinstance(value, bool) or not isinstance(value, int) or not (value == 0 or 4 <= value <= 63):
+            raise ValueError(f"{key} must be 0 or between 4 and 63")
         return value
     if spec.kind == "choice_int":
         if isinstance(value, bool) or str(value) not in spec.options:

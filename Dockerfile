@@ -7,7 +7,7 @@ RUN apt-get update \
 WORKDIR /src
 COPY server ./server
 RUN python server/stamp.py server/camd/web \
-    && pip install --no-cache-dir ./server opencv-python-headless \
+    && pip install --no-cache-dir ./server \
     && useradd --system --home /data --shell /usr/sbin/nologin camd \
     && mkdir /data && chown camd:camd /data
 

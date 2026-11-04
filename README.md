@@ -38,6 +38,7 @@ The camera only talks to the server, so the video of your room never needs to le
 ## What you need
 
 - An **ESP32-CAM** (AI-Thinker, with PSRAM) and a USB programmer or the ESP32-CAM-MB base board. A 2.4 GHz wifi network.
+- Only the AI-Thinker pin layout is supported out of the box.
 - A machine that is always on: a Raspberry Pi 4/5, a mini PC, a NAS, a Proxmox container, any Linux box with 1 GB of RAM. Docker is optional.
 
 ## Quick start
@@ -102,7 +103,7 @@ Everything has a default; override with `/etc/camd/config.toml` or `CAMD_*` envi
 
 ```bash
 cd server
-pip install -e '.[dev]' opencv-python-headless
+pip install -e '.[dev]'
 pytest                       # 100+ tests
 node --test webtests/        # interface helpers and translations
 python ../tools/fake_camera.py ./some-jpegs --token test      # a camera without hardware

@@ -20,7 +20,7 @@ REPORT_EVERY_S = 2
 
 
 def client_from_environment() -> CameraClient:
-    return CameraClient(os.environ.get("CAM_HOST", "192.168.1.93"), os.environ["CAMD_CAMERA_TOKEN"])
+    return CameraClient(os.environ["CAM_HOST"], os.environ["CAMD_CAMERA_TOKEN"])
 
 
 def trace(seconds: int) -> None:
@@ -51,7 +51,7 @@ def trace(seconds: int) -> None:
 
 def soak(seconds: int) -> None:
     cfg = Config(
-        camera_host=os.environ.get("CAM_HOST", "192.168.1.93"),
+        camera_host=os.environ["CAM_HOST"],
         camera_token=os.environ["CAMD_CAMERA_TOKEN"],
         data_dir=Path(tempfile.mkdtemp(prefix="camd-soak-")),
     )

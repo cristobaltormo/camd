@@ -24,7 +24,8 @@ static const char SETUP_PAGE[] PROGMEM = R"HTML(<!doctype html><meta name=viewpo
 <label>Wifi network (2.4 GHz)</label><select id=n onchange="s.value=this.value"></select>
 <input id=s name=ssid placeholder="or type its name" required>
 <label>Wifi password</label><input name=pass type=password autocomplete=off>
-<label>Access token</label><input id=t name=token required minlength=12>
+<label>Access token</label><input id=t name=token required minlength=12 maxlength=64 pattern="[A-Za-z0-9_-]+">
+<label>Current token</label><input name=current placeholder="only if the camera was already set up">
 <small>The token is what the server uses to talk to this camera. Copy it, you will need it once.</small>
 <button>Save and restart</button></form>
 <script>
@@ -41,8 +42,16 @@ static bool tokenMatches(const char *given) {
   return difference == 0;
 }
 
+static bool tokenIsPlain(const String &token) {
+  for (size_t i = 0; i < token.length(); i++) {
+    char c = token[i];
+    if (!isalnum((unsigned char)c) && c != '-' && c != '_') return false;
+  }
+  return true;
+}
+
 static bool authorized(httpd_req_t *req) {
-  char header[96];
+  char header[160];
   if (httpd_req_get_hdr_value_str(req, "Authorization", header, sizeof(header)) != ESP_OK) return false;
   return strncmp(header, "Bearer ", 7) == 0 && tokenMatches(header + 7);
 }
@@ -61,13 +70,13 @@ static esp_err_t healthHandler(httpd_req_t *req) { return reply(req, "200 OK", "
 static esp_err_t captureHandler(httpd_req_t *req) {
   if (!authorized(req)) return deny(req);
   if (!cameraRunning()) return standby(req);
-  camera_fb_t *frame = esp_camera_fb_get();
+  camera_fb_t *frame = cameraFrame();
   cameraNoteFrame(frame != nullptr);
   if (!frame) return reply(req, "500 Internal Server Error", "text/plain", "no frame");
   httpd_resp_set_type(req, "image/jpeg");
   httpd_resp_set_hdr(req, "Cache-Control", "no-store");
   esp_err_t result = httpd_resp_send(req, (const char *)frame->buf, frame->len);
-  esp_camera_fb_return(frame);
+  cameraRelease(frame);
   return result;
 }
 
@@ -117,14 +126,14 @@ static esp_err_t streamHandler(httpd_req_t *req) {
 
   esp_err_t result = ESP_OK;
   while (result == ESP_OK && cameraRunning()) {
-    camera_fb_t *frame = esp_camera_fb_get();
+    camera_fb_t *frame = cameraFrame();
     cameraNoteFrame(frame != nullptr);
     if (!frame) return ESP_FAIL;
     char head[96];
     size_t headLength = snprintf(head, sizeof(head), "\r\n--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n", (unsigned)frame->len);
     result = httpd_resp_send_chunk(req, head, headLength);
     if (result == ESP_OK) result = httpd_resp_send_chunk(req, (const char *)frame->buf, frame->len);
-    esp_camera_fb_return(frame);
+    cameraRelease(frame);
   }
   return result;
 }
@@ -160,13 +169,21 @@ static esp_err_t scanHandler(httpd_req_t *req) {
 
 static esp_err_t saveHandler(httpd_req_t *req) {
   if (!networkPortalActive()) return deny(req);
+  if (req->content_len == 0 || req->content_len > MAX_FORM_BYTES) return reply(req, "413 Payload Too Large", "text/plain", "form too large");
   char buffer[MAX_FORM_BYTES + 1];
-  int received = httpd_req_recv(req, buffer, min<size_t>(req->content_len, MAX_FORM_BYTES));
-  if (received <= 0) return reply(req, "400 Bad Request", "text/plain", "empty form");
+  size_t received = 0;
+  while (received < req->content_len) {
+    int chunk = httpd_req_recv(req, buffer + received, req->content_len - received);
+    if (chunk <= 0) return reply(req, "400 Bad Request", "text/plain", "incomplete form");
+    received += chunk;
+  }
   buffer[received] = 0;
   String body(buffer);
   String ssid = formValue(body, "ssid"), token = formValue(body, "token");
-  if (ssid.isEmpty() || token.length() < 12) return reply(req, "400 Bad Request", "text/plain", "network and a token of at least 12 characters are required");
+  if (settings.wifiConfigured() && !tokenMatches(formValue(body, "current").c_str())) return deny(req);
+  if (ssid.isEmpty() || token.length() < 12 || token.length() > 64 || !tokenIsPlain(token)) {
+    return reply(req, "400 Bad Request", "text/plain", "a network and a token of 12 to 64 letters, digits, - or _ are required");
+  }
   settings.save("ssid", ssid);
   settings.save("pass", formValue(body, "pass"));
   settings.save("token", token);

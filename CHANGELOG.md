@@ -14,6 +14,7 @@ A rewrite of the server and firmware to make the project usable by other people.
 - A resolution setting; the camera control API covers exposure, gain, white balance, saturation and sharpness.
 - Firmware split into modules, with a captive setup page, mDNS, a watchdog, frame-stall recovery and constant-time token checks. The `?token=` query form was removed.
 - Docker image, compose file, installer and hardened systemd unit; CI for the server, the interface, the firmware and the image.
+- MQTT user, password and TLS; push endpoints must be public HTTPS; the camera setup page asks for the current token once the camera is configured; client addresses for rate limiting come from the proxy's `X-Forwarded-For`.
 - API split into routers, database migrations tracked with `user_version`, 100+ tests including a full pipeline test with a fake camera.
 
 ## 1.x

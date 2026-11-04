@@ -77,7 +77,7 @@ class MotionDetector:
         if gray is None:
             return QUIET
         gray = cv2.GaussianBlur(gray, BLUR_KERNEL, 0)
-        if self._background is None:
+        if self._background is None or self._background.shape != gray.shape:
             return self._restart(gray)
 
         gain = float(np.median(gray - self._background))

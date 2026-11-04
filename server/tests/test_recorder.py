@@ -253,3 +253,18 @@ def test_unconfirmed_events_expire_sooner_but_only_when_analysed(tmp_path):
     cfg.detection = "off"
     db.execute("UPDATE events SET analyzed=1, confirmed=0")
     assert purge(cfg, db) == 0
+
+
+def test_a_full_disk_closes_the_event_instead_of_wedging_it(parts, monkeypatch):
+    _, db, recorder, _ = parts()
+    t = run(recorder, 1000.0, 10, motion=False)
+    t = run(recorder, t, 10, motion=True)
+    assert recorder.recording
+
+    def full(*_):
+        raise OSError("no space left on device")
+
+    monkeypatch.setattr(recorder._current.spool, "append", full)
+    run(recorder, t, 2, motion=True)
+    assert not recorder.recording
+    recorder.flush()
