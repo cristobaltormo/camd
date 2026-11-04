@@ -1,0 +1,11 @@
+{
+  "name": "camd camera",
+  "version": "__VERSION__",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [{ "path": "camd-esp32cam.bin", "offset": 0 }]
+    }
+  ]
+}

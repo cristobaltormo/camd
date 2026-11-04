@@ -14,7 +14,7 @@ const PORT = 9334;
 const profile = mkdtempSync(join(tmpdir(), "ui-smoke-"));
 const args = ["--headless=new", "--no-sandbox", "--disable-gpu", `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`, "--window-size=390,844", "about:blank"];
 if (process.env.RESOLVE) args.unshift(`--host-resolver-rules=${process.env.RESOLVE}`);
-const chrome = spawn("chromium", args, { stdio: "ignore" });
+const chrome = spawn(process.env.CHROMIUM || "chromium", args, { stdio: "ignore" });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const problems = [];
 

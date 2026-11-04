@@ -1,0 +1,26 @@
+services:
+  camd:
+    build: .
+    image: camd:latest
+    restart: unless-stopped
+    ports:
+      - "8180:8180"
+    volumes:
+      - camd-data:/data
+    env_file: .env
+    cap_add:
+      - NET_RAW
+    depends_on:
+      mosquitto:
+        condition: service_started
+        required: false
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    profiles: ["mqtt"]
+    restart: unless-stopped
+    volumes:
+      - ./deploy/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
+volumes:
+  camd-data:

@@ -8,3 +8,4 @@ __pycache__/
 server/camd/build.txt
 *.egg-info/
 .env
+firmware/camd-esp32cam.bin

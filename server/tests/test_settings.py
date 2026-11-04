@@ -81,3 +81,15 @@ def test_quiet_hours_within_one_day():
         return time.mktime((2026, 10, 12, hour, 0, 0, 0, 0, -1))
 
     assert prefs.in_quiet_hours(cfg, at(14)) and not prefs.in_quiet_hours(cfg, at(16))
+
+
+def test_resolution_is_a_known_size_and_is_sent_to_the_camera(env, monkeypatch):
+    sent = []
+    monkeypatch.setattr(env.rt.camera, "apply_controls", lambda controls: sent.append(controls) or {})
+    assert env.post("/api/settings", {"camera_framesize": 640}).status_code == 400
+    assert env.post("/api/settings", {"camera_framesize": 8}).status_code == 200
+    env.rt.apply_camera()
+    assert sent[-1]["framesize"] == 8
+    env.post("/api/settings", {"camera_framesize": 0})
+    env.rt.apply_camera()
+    assert "framesize" not in sent[-1]

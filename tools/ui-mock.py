@@ -1,4 +1,5 @@
 import json
+import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -6,16 +7,20 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 WEB = Path(__file__).resolve().parent.parent / "server" / "camd" / "web"
-ICON = (WEB / "icon-512.png").read_bytes()
+IMAGE = Path(os.environ.get("UI_MOCK_IMAGE", WEB / "icon-512.png"))
+ICON = IMAGE.read_bytes()
+IMAGE_TYPE = "image/jpeg" if IMAGE.suffix == ".jpg" else "image/png"
 LOCK = threading.Lock()
 NOW = time.time()
 WAKE_DELAY_S = 2.0
+PERSON_BOX = [0.37, 0.27, 0.16, 0.67]
+DETECTING = bool(os.environ.get("UI_MOCK_DETECT"))
 LABELS = ["person", "bicycle", "car", "cat", "dog", "bird", "chair", "bottle"]
 CONTENT_TYPES = {".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".svg": "image/svg+xml"}
 
 
 def event(event_id, age, duration, status="done", kind="motion", keep=False, labels=(), analyzed=False):
-    boxes = [{"label": labels[0], "confidence": 0.82, "box": [0.3, 0.25, 0.3, 0.5]}] if labels else []
+    boxes = [{"label": labels[0], "confidence": 0.82, "box": PERSON_BOX}] if labels else []
     return {
         "id": event_id, "start": NOW - age, "end": NOW - age + duration, "duration": duration, "status": status, "score": 0.05,
         "size": 1_000_000, "kind": kind, "keep": keep, "analyzed": analyzed, "labels": list(labels), "detections": boxes,
@@ -61,8 +66,9 @@ def status():
         "version": "mock", "armed": True, "reason": "away", "mode": STATE["mode"], "snooze_until": STATE["snooze_until"],
         "privacy": STATE["privacy"], "presence": {"configured": True, "home": False},
         "camera": {"enabled": STATE["enabled"], "online": online, "standby": STATE["privacy"], "rssi": -52, "fw": "mock", "uptime_s": 190000, "fps": 12.4},
-        "motion": False, "recording": clip["active"], "last_event": visible[0] if visible else None,
-        "detection": {"mode": STATE["settings"]["detection"], "state": "ready", "error": "", "inference_ms": 48.0, "items": []},
+        "motion": DETECTING, "recording": clip["active"], "last_event": visible[0] if visible else None,
+        "detection": {"mode": STATE["settings"]["detection"], "state": "ready", "error": "", "inference_ms": 48.0,
+                      "items": [{"label": "person", "confidence": 0.87, "box": PERSON_BOX}] if DETECTING else []},
         "push_subscriptions": 0, "channels": ["ntfy"], "build": "dev",
         "storage": {"events": len(STATE["events"]), "bytes": 612_000_000, "cap_bytes": 6 * 1024**3, "photos": len(STATE["photos"]), "photo_bytes": 270000},
         "clip": clip,
@@ -109,7 +115,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/live" and (STATE["privacy"] or not STATE["enabled"]):
                 return self.send({"detail": "camera in standby"}, code=503)
         if path in ("/api/snapshot", "/api/live") or path.endswith(("/thumb", "/img")):
-            return self.send(ICON, "image/png")
+            return self.send(ICON, IMAGE_TYPE)
         if path.endswith("/clip"):
             return self.send(b"", "video/mp4")
         if path == "/":

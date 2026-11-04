@@ -2,6 +2,7 @@ import html
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -20,7 +21,7 @@ log = logging.getLogger("camd.app")
 WEB_DIR = Path(__file__).parent / "web"
 BUILD_FILE = Path(__file__).parent / "build.txt"
 MAX_VIEWERS = 4
-UNSAFE_METHODS_EXEMPT = ("GET", "HEAD", "OPTIONS")
+SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 
 CSP = (
     "default-src 'self'; img-src 'self' data: blob:; media-src 'self'; style-src 'self'; "
@@ -32,6 +33,13 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "X-Frame-Options": "DENY",
 }
+
+
+def same_origin(request: Request, cfg: Config) -> bool:
+    origin = request.headers.get("origin")
+    if origin is None:
+        return False
+    return origin == cfg.origin or urlsplit(origin).netloc == request.headers.get("host")
 
 
 def web_manifest(cfg: Config) -> dict:
@@ -81,7 +89,7 @@ def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None 
 
     @app.middleware("http")
     async def guard(request: Request, call_next):
-        if request.method not in UNSAFE_METHODS_EXEMPT and request.headers.get("origin") != cfg.origin:
+        if request.method not in SAFE_METHODS and not same_origin(request, cfg):
             return JSONResponse({"detail": "bad origin"}, status_code=403)
         response = await call_next(request)
         response.headers.update(SECURITY_HEADERS)

@@ -4,11 +4,8 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 DEFAULT_PATH = "/etc/camd/config.toml"
-ENV_SECRETS = {
-    "camera_token": "CAMD_CAMERA_TOKEN",
-    "notifich_key": "CAMD_NOTIFICH_KEY",
-    "ntfy_token": "CAMD_NTFY_TOKEN",
-}
+ENV_PREFIX = "CAMD_"
+TRUE_WORDS = {"1", "true", "yes", "on"}
 
 
 @dataclass
@@ -58,6 +55,7 @@ class Config:
     camera_brightness: int = 0
     camera_contrast: int = 0
     camera_quality: int = 0
+    camera_framesize: int = 0
 
     @property
     def clips_dir(self) -> Path:
@@ -84,6 +82,16 @@ class Config:
         return self.data_dir / "vapid_private.pem"
 
 
+def coerce(raw: str, template):
+    if isinstance(template, bool):
+        return raw.strip().lower() in TRUE_WORDS
+    if isinstance(template, Path):
+        return Path(raw)
+    if isinstance(template, list):
+        return [item.strip() for item in raw.split(",") if item.strip()]
+    return type(template)(raw)
+
+
 def load(path: str | None = None) -> Config:
     path = path or os.environ.get("CAMD_CONFIG", DEFAULT_PATH)
     raw: dict = {}
@@ -97,6 +105,8 @@ def load(path: str | None = None) -> Config:
         raise ValueError(f"unknown config keys: {', '.join(unknown)}")
 
     cfg = Config(**{key: Path(value) if key == "data_dir" else value for key, value in raw.items()})
-    for attr, variable in ENV_SECRETS.items():
-        setattr(cfg, attr, os.environ.get(variable, getattr(cfg, attr)))
+    for name in known:
+        override = os.environ.get(ENV_PREFIX + name.upper())
+        if override is not None:
+            setattr(cfg, name, coerce(override, getattr(cfg, name)))
     return cfg

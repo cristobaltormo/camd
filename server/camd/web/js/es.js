@@ -286,6 +286,8 @@ export default {
   "Mirror horizontally": "Espejo horizontal",
   "Brightness": "Brillo",
   "Contrast": "Contraste",
+  "Resolution": "Resolución",
+  "A smaller image uses less wifi and CPU on the server": "Una imagen más pequeña gasta menos wifi y CPU en el servidor",
   "Image quality": "Calidad de imagen",
   "More quality weighs more: with weak wifi it may stutter": "Más calidad pesa más: con wifi flojo puede ir a saltos",
   "Wifi signal": "Señal wifi",

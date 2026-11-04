@@ -1,0 +1,7 @@
+camera.example.org {
+	@live path /api/live
+	reverse_proxy @live 127.0.0.1:8180 {
+		flush_interval -1
+	}
+	reverse_proxy 127.0.0.1:8180
+}

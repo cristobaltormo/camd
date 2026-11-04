@@ -36,6 +36,7 @@ const OPTIONS = {
   presence_grace_s: [[60, 120, 300, 600, 900, 1800], seconds],
   detect_confidence: [[0.3, 0.4, 0.5, 0.6, 0.7, 0.8], (v) => `${Math.round(v * 100)}%`],
   camera_quality: [[0, 8, 12, 18, 28], (v) => ({ 0: t("Default"), 8: t("Maximum"), 12: t("High"), 18: t("Medium"), 28: t("Low (less data)") })[v]],
+  camera_framesize: [[0, 5, 8, 9, 10], (v) => ({ 0: t("Default"), 5: "320 × 240", 8: "640 × 480", 9: "800 × 600", 10: "1024 × 768" })[v]],
 };
 
 const sensitivityText = (v) => t("{n} of 10 · {level}", { n: v, level: v <= 3 ? t("low") : v <= 7 ? t("medium") : t("high") });
@@ -306,6 +307,7 @@ export function mount(el, navigate, ctx) {
         toggle("camera_hmirror", t("Mirror horizontally")),
         slider("camera_brightness", t("Brightness"), null, -2, 2, signed),
         slider("camera_contrast", t("Contrast"), null, -2, 2, signed),
+        select("camera_framesize", t("Resolution"), t("A smaller image uses less wifi and CPU on the server")),
         select("camera_quality", t("Image quality"), t("More quality weighs more: with weak wifi it may stutter"))),
       card(t("Device"), ...deviceRows(cam)),
     ];

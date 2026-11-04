@@ -96,3 +96,10 @@ def test_short_password_is_refused(anonymous):
 
     with pytest.raises(AuthError):
         anonymous.auth.set_password("short")
+
+
+def test_a_request_from_the_same_host_is_accepted_even_if_it_is_not_the_configured_origin(env):
+    other = {"Origin": "http://192.168.1.50:8180", "Host": "192.168.1.50:8180"}
+    assert env.client.post("/api/mode", json={"mode": "armed"}, headers=other).status_code == 200
+    forged = {"Origin": "http://evil.example", "Host": "192.168.1.50:8180"}
+    assert env.client.post("/api/mode", json={"mode": "armed"}, headers=forged).status_code == 403

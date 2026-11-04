@@ -61,6 +61,7 @@ class SettingsBody(BaseModel):
     camera_brightness: int | None = None
     camera_contrast: int | None = None
     camera_quality: int | None = None
+    camera_framesize: int | None = None
 
 
 class IdsBody(BaseModel):

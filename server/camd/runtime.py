@@ -84,6 +84,8 @@ class Runtime:
         }
         if cfg.camera_quality:
             controls["quality"] = cfg.camera_quality
+        if cfg.camera_framesize:
+            controls["framesize"] = cfg.camera_framesize
         return self.camera.apply_controls(controls)
 
     def apply_prefs(self, changed: set[str]) -> None:

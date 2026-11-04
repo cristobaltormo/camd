@@ -45,6 +45,7 @@ SPEC: dict[str, Pref] = {
     "camera_brightness": number(-2, 2, "int"),
     "camera_contrast": number(-2, 2, "int"),
     "camera_quality": number(0, 63, "int"),
+    "camera_framesize": Pref("choice_int", options=("0", "5", "8", "9", "10")),
     "detection": Pref("choice", options=DETECTION_MODES),
     "language": Pref("choice", options=LANGUAGES),
     "detect_labels": Pref("labels", options=COCO_LABELS),
@@ -67,6 +68,10 @@ def validate(key: str, value: Any) -> Any:
         if value not in spec.options:
             raise ValueError(f"{key} must be one of {', '.join(spec.options)}")
         return value
+    if spec.kind == "choice_int":
+        if isinstance(value, bool) or str(value) not in spec.options:
+            raise ValueError(f"{key} must be one of {', '.join(spec.options)}")
+        return int(value)
     if spec.kind == "labels":
         if not isinstance(value, list) or not 1 <= len(value) <= MAX_LABELS or any(v not in spec.options for v in value):
             raise ValueError(f"{key} must list between 1 and {MAX_LABELS} known object names")

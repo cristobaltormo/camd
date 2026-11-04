@@ -6,7 +6,7 @@ import { join } from "node:path";
 const BASE = process.env.UI_BASE || "http://127.0.0.1:8199";
 const PORT = 9333;
 const profile = mkdtempSync(join(tmpdir(), "ui-e2e-"));
-const chrome = spawn("chromium", ["--headless=new", "--no-sandbox", "--disable-gpu", `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`, "--window-size=1280,900", "about:blank"], { stdio: "ignore" });
+const chrome = spawn(process.env.CHROMIUM || "chromium", ["--headless=new", "--no-sandbox", "--disable-gpu", `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`, "--window-size=1280,900", "about:blank"], { stdio: "ignore" });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const problems = [];
