@@ -3,20 +3,41 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>camd camera installer</title>
+<meta name="color-scheme" content="dark light">
+<title>Install the camd firmware</title>
 <script type="module" src="https://unpkg.com/esp-web-tools@10.0.1/dist/web/install-button.js?module"></script>
 <style>
-  body { font: 16px/1.5 system-ui, sans-serif; max-width: 560px; margin: 48px auto; padding: 0 20px; }
-  h1 { font-size: 24px; }
-  esp-web-install-button { display: block; margin: 24px 0; }
+  :root { --bg: #0b0c0f; --surface: #111317; --line: #2b3039; --text: #e9ebee; --muted: #8d939e; --accent: #4c82f7; color-scheme: dark; }
+  @media (prefers-color-scheme: light) { :root { --bg: #f6f6f7; --surface: #fff; --line: #d9dce1; --text: #15171b; --muted: #5f6672; color-scheme: light; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--bg); color: var(--text); font: 15px/1.55 Inter, system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  main { width: 100%; max-width: 520px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 32px; }
+  .mark { width: 44px; height: 44px; display: block; margin-bottom: 20px; }
+  h1 { margin: 0 0 8px; font-size: 22px; font-weight: 600; letter-spacing: -.02em; }
+  p { margin: 0 0 16px; color: var(--muted); }
+  ol { margin: 0 0 24px; padding-left: 20px; color: var(--muted); }
+  li { margin-bottom: 6px; }
+  strong { color: var(--text); font-weight: 600; }
+  button { height: 40px; padding: 0 18px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: 600 14px Inter, system-ui, sans-serif; cursor: pointer; }
+  button:hover { filter: brightness(1.08); }
+  .note { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 13px; }
+  a { color: var(--accent); }
 </style>
 </head>
 <body>
-<h1>camd camera installer</h1>
-<p>Plug your ESP32-CAM into this computer with a USB cable and press the button. It needs Chrome or Edge.</p>
+<main>
+<svg class="mark" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#0d0f13"/><circle cx="256" cy="256" r="154" fill="#141922" stroke="#e9ebee" stroke-width="26"/><circle cx="256" cy="256" r="84" fill="#0b0d12" stroke="#4c82f7" stroke-width="22"/><circle cx="286" cy="226" r="19" fill="#e9ebee"/></svg>
+<h1>Install the camd firmware</h1>
+<p>Flash an ESP32-CAM from this page. It needs Chrome or Edge on a computer, and a USB cable.</p>
+<ol>
+  <li>Plug the board into this computer.</li>
+  <li>Press the button and pick its serial port.</li>
+  <li>Wait for the installation to finish.</li>
+</ol>
 <esp-web-install-button manifest="manifest.json">
   <button slot="activate">Install the firmware</button>
 </esp-web-install-button>
-<p>When it finishes, the camera opens a wifi network called <strong>camd-setup-XXXX</strong>. Join it with your phone to finish the setup.</p>
+<p class="note">When it finishes the camera opens a wifi network called <strong>camd-setup-XXXX</strong>. Join it with your phone to choose your wifi and copy the access token. Then <a href="https://github.com/cristobaltormo/camd#3-run-the-server">run the server</a>.</p>
+</main>
 </body>
 </html>
