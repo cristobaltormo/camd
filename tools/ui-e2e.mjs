@@ -1,47 +1,15 @@
-import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { launch, sleep } from "./cdp.mjs";
 
 const BASE = process.env.UI_BASE || "http://127.0.0.1:8199";
-const PORT = 9333;
-const profile = mkdtempSync(join(tmpdir(), "ui-e2e-"));
-const chrome = spawn(process.env.CHROMIUM || "chromium", ["--headless=new", "--no-sandbox", "--disable-gpu", `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`, "--window-size=1280,900", "about:blank"], { stdio: "ignore" });
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const problems = [];
 
-async function connect() {
-  for (let i = 0; i < 60; i++) {
-    try {
-      const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
-      const page = list.find((t) => t.type === "page");
-      if (page) return page.webSocketDebuggerUrl;
-    } catch (_) {}
-    await sleep(250);
-  }
-  throw new Error("chromium did not start");
-}
-
-const ws = new WebSocket(await connect());
-await new Promise((r) => ws.addEventListener("open", r));
-let nextId = 0;
-const waiting = new Map();
-ws.addEventListener("message", (m) => {
-  const msg = JSON.parse(m.data);
-  if (msg.id && waiting.has(msg.id)) { waiting.get(msg.id)(msg); waiting.delete(msg.id); return; }
+const browser = await launch({ port: 9333 });
+const { send, js } = browser;
+browser.onEvent((msg) => {
   if (msg.method === "Runtime.exceptionThrown") problems.push("exception: " + (msg.params.exceptionDetails.exception?.description || msg.params.exceptionDetails.text));
   if (msg.method === "Runtime.consoleAPICalled" && msg.params.type === "error") problems.push("console.error: " + msg.params.args.map((a) => a.value ?? a.description).join(" "));
 });
-const send = (method, params = {}) => new Promise((resolve) => { const id = ++nextId; waiting.set(id, resolve); ws.send(JSON.stringify({ id, method, params })); });
-await send("Runtime.enable");
-await send("Page.enable");
 
-const js = async (expression) => {
-  const r = await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
-  if (r.result.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description || "evaluate failed");
-  return r.result.result.value;
-};
 const waitFor = async (expression, label, ms = 8000) => {
   const end = Date.now() + ms;
   while (Date.now() < end) {
@@ -184,8 +152,5 @@ for (const [name, fn] of Object.entries(tests)) {
 }
 if (problems.length) { failed++; console.log("FAIL page errors:\n  " + [...new Set(problems)].join("\n  ")); } else console.log("PASS no page errors");
 
-ws.close();
-chrome.kill();
-await sleep(600);
-rmSync(profile, { recursive: true, force: true, maxRetries: 5 });
+await browser.close();
 process.exit(failed ? 1 : 0);
