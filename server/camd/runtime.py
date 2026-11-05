@@ -6,7 +6,7 @@ from . import prefs
 from .arming import Arming
 from .config import Config
 from .db import Database
-from .detect import Detection, DetectionWorker
+from .detect import Detection, DetectionWorker, in_zones
 from .events import EventRecorder, event_json
 from .grabber import CameraClient, Grabber
 from .messages import label_names, translate
@@ -66,10 +66,11 @@ class Runtime:
         return MotionSettings(
             sensitivity=int(raw.get("sensitivity", 5)),
             ignore_rects=[list(map(float, rect)) for rect in raw.get("ignore_rects", [])],
+            alert_rects=[list(map(float, rect)) for rect in raw.get("alert_rects", [])],
         )
 
-    def save_motion_settings(self, sensitivity: int, ignore_rects: list[list[float]]) -> None:
-        self.db.set_setting("motion", {"sensitivity": sensitivity, "ignore_rects": ignore_rects})
+    def save_motion_settings(self, sensitivity: int, ignore_rects: list[list[float]], alert_rects: list[list[float]]) -> None:
+        self.db.set_setting("motion", {"sensitivity": sensitivity, "ignore_rects": ignore_rects, "alert_rects": alert_rects})
         self.detector.update_settings(self.load_motion_settings())
 
     def apply_camera(self) -> dict[str, bool]:
@@ -176,6 +177,8 @@ class Runtime:
             self._last_detect = ts
 
     def _on_detections(self, ts: float, jpeg: bytes, found: list[Detection]) -> None:
+        zones = self.detector.settings.alert_rects
+        found = [d for d in found if in_zones(d, zones)]
         self.last_detections = (ts, found)
         self.mqtt.publish("object", "ON" if found else "OFF")
         self.recorder.observe(ts, jpeg, found)

@@ -109,6 +109,14 @@ COCO_LABELS = (
 DEFAULT_LABELS = ("person", "cat", "dog")
 
 
+def in_zones(detection: "Detection", rects: list[list[float]]) -> bool:
+    if not rects:
+        return True
+    x, y, w, h = detection.box
+    cx, cy = x + w / 2, y + h / 2
+    return any(rx <= cx <= rx + rw and ry <= cy <= ry + rh for rx, ry, rw, rh in rects)
+
+
 @dataclass(frozen=True)
 class Detection:
     label: str

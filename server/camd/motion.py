@@ -16,6 +16,7 @@ DILATE_ITERATIONS = 2
 class MotionSettings:
     sensitivity: int = 5
     ignore_rects: list[list[float]] = field(default_factory=list)
+    alert_rects: list[list[float]] = field(default_factory=list)
 
     @property
     def pixel_threshold(self) -> int:

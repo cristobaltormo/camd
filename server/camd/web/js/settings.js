@@ -215,6 +215,9 @@ export function mount(el, navigate, ctx) {
       card(t("Ignored zones"),
         h("div", { class: "muted", text: t("Drag over the image to mark where you do not want to detect (window, fan, screen).") }),
         zoneEditor(st.draft.ignore_rects, (next) => change("ignore_rects", next))),
+      st.draft.detection !== "off" ? card(t("Alert zones"),
+        h("div", { class: "muted", text: t("Alert only when an object is inside these zones. Leave it empty to alert everywhere.") }),
+        zoneEditor(st.draft.alert_rects, (next) => change("alert_rects", next), "alert")) : null,
     ];
   }
 
@@ -493,10 +496,10 @@ async function disablePush() {
 
 const percent = (value) => value * 100 + "%";
 
-function zoneEditor(initial, onChange) {
+function zoneEditor(initial, onChange, kind = "ignore") {
   let rects = initial.map((r) => r.slice());
   const img = h("img", { alt: t("Preview to mark zones"), src: "/api/snapshot?t=" + Date.now(), draggable: "false" });
-  const box = h("div", { class: "zone" }, img);
+  const box = h("div", { class: "zone " + kind }, img);
   const counter = h("span", { class: "muted" });
   let start = null;
   let temp = null;

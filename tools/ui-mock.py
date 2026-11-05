@@ -71,6 +71,7 @@ STATE = {
     "settings": {
         "sensitivity": 5,
         "ignore_rects": [[0.1, 0.1, 0.2, 0.2]],
+        "alert_rects": [],
         "retention_days": 14,
         "pre_roll_s": 3.0,
         "post_roll_s": 10.0,

@@ -236,6 +236,8 @@ export default {
   "Sensitivity to motion": "Sensibilidad al movimiento",
   "Higher notices smaller changes but gives more false alarms": "Más alta detecta cambios más pequeños, pero da más falsos avisos",
   "Ignored zones": "Zonas ignoradas",
+  "Alert zones": "Zonas de alerta",
+  "Alert only when an object is inside these zones. Leave it empty to alert everywhere.": "Avisa solo cuando haya un objeto dentro de estas zonas. Déjalo vacío para avisar en toda la imagen.",
   "Drag over the image to mark where you do not want to detect (window, fan, screen).": "Arrastra sobre la imagen para marcar donde no quieres detectar (ventana, ventilador, pantalla).",
   "Clips": "Clips",
   "Pre-roll": "Pregrabación",

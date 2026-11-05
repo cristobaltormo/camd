@@ -165,3 +165,14 @@ def test_the_last_event_card_skips_unfinished_and_unconfirmed_events(env):
     env.db.execute("INSERT INTO events(start_ts, end_ts, status, analyzed, confirmed) VALUES(200, 210, 'done', 1, 0)")
     env.db.execute("INSERT INTO events(start_ts, status) VALUES(300, 'recording')")
     assert env.get("/api/status").json()["last_event"]["start"] == 100
+
+
+def test_detections_outside_the_alert_zones_are_ignored(env):
+    env.post("/api/settings", {"alert_rects": [[0.0, 0.0, 0.5, 0.5]]})
+    seen = []
+    env.rt.recorder.observe = lambda ts, jpeg, found: seen.append(found)
+    inside = Detection("person", 0.9, (0.1, 0.1, 0.2, 0.2))
+    outside = Detection("person", 0.9, (0.7, 0.7, 0.2, 0.2))
+    env.rt._on_detections(time.time(), b"", [inside, outside])
+    assert seen == [[inside]]
+    assert env.rt.last_detections[1] == [inside]

@@ -34,5 +34,6 @@ A person who sits still keeps the event open: the network is asked again every 2
 - Too many events with no object: raise the motion sensitivity threshold (lower sensitivity) or draw ignored zones over windows and screens.
 - Missed objects: lower the minimum confidence (try 40%), raise the resolution of the camera, or make sure the room is lit: the OV2640 sensor has no infrared.
 - Objects you do not care about: untick them in **What to look for**.
+- Alerts only for one part of the room: draw **Alert zones**. An object raises an alert only when the centre of its box is inside one of them; with none drawn it alerts everywhere. Ignored zones still apply to motion.
 
 The thumbnail of an event is the frame where the object was seen most clearly, and the boxes are stored with the event so the player can show them.

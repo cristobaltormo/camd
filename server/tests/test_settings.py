@@ -100,3 +100,10 @@ def test_jpeg_quality_must_be_zero_or_within_the_camera_range(env, value):
     assert env.post("/api/settings", {"camera_quality": value}).status_code in (400, 422)
     assert env.post("/api/settings", {"camera_quality": 0}).status_code == 200
     assert env.post("/api/settings", {"camera_quality": 12}).status_code == 200
+
+
+def test_alert_zones_roundtrip_and_validate(env):
+    assert env.post("/api/settings", {"alert_rects": [[0.1, 0.2, 0.3, 0.4]]}).status_code == 200
+    assert env.get("/api/settings").json()["alert_rects"] == [[0.1, 0.2, 0.3, 0.4]]
+    assert env.post("/api/settings", {"alert_rects": [[0.1, 0.2, 0.3, 2]]}).status_code == 400
+    assert env.get("/api/settings").json()["alert_rects"] == [[0.1, 0.2, 0.3, 0.4]]

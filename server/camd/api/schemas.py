@@ -38,6 +38,7 @@ class SettingsBody(BaseModel):
 
     sensitivity: int | None = Field(default=None, ge=1, le=10)
     ignore_rects: list[list[float]] | None = Field(default=None, max_length=10)
+    alert_rects: list[list[float]] | None = Field(default=None, max_length=10)
     retention_days: int | None = Field(default=None, ge=1, le=365)
     pre_roll_s: float | None = None
     post_roll_s: float | None = None

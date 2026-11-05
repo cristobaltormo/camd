@@ -43,6 +43,7 @@ def get_settings(svc: Services = Depends(services)):
     return {
         "sensitivity": motion.sensitivity,
         "ignore_rects": motion.ignore_rects,
+        "alert_rects": motion.alert_rects,
         "retention_days": svc.cfg.retention_days,
         "available_labels": list(COCO_LABELS),
         **prefs.snapshot(svc.cfg),
@@ -55,14 +56,15 @@ def post_settings(body: SettingsBody, svc: Services = Depends(services)):
     motion = svc.rt.load_motion_settings()
     sensitivity = data.pop("sensitivity", motion.sensitivity)
     rects = data.pop("ignore_rects", motion.ignore_rects)
+    alert_rects = data.pop("alert_rects", motion.alert_rects)
     retention = data.pop("retention_days", svc.cfg.retention_days)
-    if any(len(rect) != 4 or any(not 0 <= v <= 1 for v in rect) for rect in rects):
+    if any(len(rect) != 4 or any(not 0 <= v <= 1 for v in rect) for rect in rects + alert_rects):
         raise HTTPException(400, "invalid rect")
     try:
         changed = prefs.update(svc.cfg, svc.db, data)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    svc.rt.save_motion_settings(sensitivity, rects)
+    svc.rt.save_motion_settings(sensitivity, rects, alert_rects)
     svc.cfg.retention_days = retention
     svc.db.set_setting("retention_days", retention)
     svc.rt.apply_prefs(changed)

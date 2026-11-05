@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from camd import detect
-from camd.detect import COCO_LABELS, DetectionWorker, Letterbox, decode
+from camd.detect import COCO_LABELS, Detection, DetectionWorker, Letterbox, decode, in_zones
 
 
 def synthetic_outputs(level, cell, label, score, bins):
@@ -140,3 +140,13 @@ def test_worker_delivers_results_and_skips_busy_frames(tmp_path):
         time.sleep(0.02)
     worker.stop()
     assert results and results[0][0] == 1.0 and results[0][1][0].label == "person"
+
+
+def test_zones_filter_by_the_centre_of_the_box():
+    inside = Detection("person", 0.9, (0.1, 0.1, 0.2, 0.2))
+    outside = Detection("person", 0.9, (0.7, 0.7, 0.2, 0.2))
+    zone = [[0.0, 0.0, 0.5, 0.5]]
+    assert in_zones(inside, zone) and not in_zones(outside, zone)
+    assert in_zones(outside, [])
+    straddling = Detection("person", 0.9, (0.4, 0.4, 0.4, 0.4))
+    assert not in_zones(straddling, zone)
