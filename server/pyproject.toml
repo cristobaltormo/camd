@@ -20,12 +20,12 @@ classifiers = [
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
-    "paho-mqtt>=2",
-    "webauthn>=2",
+    "paho-mqtt>=2.1.0",
+    "webauthn>=3.0.1",
     "pywebpush",
     "requests",
     "numpy",
-    "opencv-python-headless>=4.7",
+    "opencv-python-headless>=5.0.0.93",
 ]
 
 [project.optional-dependencies]
