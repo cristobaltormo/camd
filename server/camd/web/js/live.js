@@ -1,4 +1,4 @@
-import { api, busy, choiceDialog, chip, fmtAgo, fmtDay, fmtTime, h, icon, labelName, prefs, saveToDevice, spinner, toast } from "./lib.js";
+import { api, busy, choiceDialog, detectionBox, fmtAgo, fmtDay, fmtTime, h, icon, labelName, prefs, saveToDevice, spinner, toast } from "./lib.js";
 import { t } from "./text.js";
 
 const REASONS = {
@@ -40,7 +40,16 @@ export function mount(el, navigate) {
   const liveBadge = h("span", { class: "badge live", hidden: true }, h("span", { class: "pulse" }), t("LIVE"));
   const recBadge = h("span", { class: "badge rec", hidden: true }, h("span", { class: "pulse" }), t("RECORDING"));
   const fullBtn = h("button", { class: "round", "aria-label": t("Full screen"), title: t("Full screen (F)") }, icon("expand"));
-  const viewer = h("div", { class: "viewer" }, img, boxes, overlay, h("div", { class: "badges" }, liveBadge, recBadge), h("div", { class: "viewer-actions" }, fullBtn));
+  const clockHud = h("span", { class: "num" });
+  const sizeHud = h("span", { class: "num" });
+  const hud = h("div", { class: "hud", hidden: true }, clockHud, sizeHud);
+  const viewer = h("div", { class: "viewer" }, img, boxes, overlay, h("div", { class: "badges" }, liveBadge, recBadge), hud, h("div", { class: "viewer-actions" }, fullBtn));
+  const tickHud = () => {
+    const now = new Date();
+    clockHud.textContent = now.toLocaleTimeString(undefined, { hour12: false });
+    sizeHud.textContent = img.naturalWidth ? `${img.naturalWidth}x${img.naturalHeight}` : "";
+  };
+  const hudTimer = setInterval(tickHud, 1000);
 
   let phase = "idle";
   let failures = 0;
@@ -50,6 +59,7 @@ export function mount(el, navigate) {
   const showOverlay = (kind, text, action, sub) => {
     overlay.hidden = false;
     liveBadge.hidden = true;
+    hud.hidden = true;
     overlay.replaceChildren(
       kind === "wait" ? spinner() : icon(kind === "standby" || kind === "off" ? "eyeOff" : "signal"),
       h("div", { class: "overlay-title", text }),
@@ -59,12 +69,7 @@ export function mount(el, navigate) {
   };
 
   function drawBoxes(items) {
-    boxes.replaceChildren(...items.map((item) => {
-      const [x, y, w, hh] = item.box;
-      const frame = h("div", { class: "box" }, h("span", { text: `${labelName(item.label)} ${Math.round(item.confidence * 100)}%` }));
-      Object.assign(frame.style, { left: x * 100 + "%", top: y * 100 + "%", width: w * 100 + "%", height: hh * 100 + "%" });
-      return frame;
-    }));
+    boxes.replaceChildren(...items.map(detectionBox));
   }
 
   function stopStream() {
@@ -89,6 +94,8 @@ export function mount(el, navigate) {
         failures = 0;
         overlay.hidden = true;
         liveBadge.hidden = false;
+        hud.hidden = false;
+        tickHud();
         clearInterval(watcher);
       }
     }, 250);
@@ -348,6 +355,7 @@ export function mount(el, navigate) {
       timers.forEach(clearTimeout);
       clearInterval(clipTicker);
       clearInterval(frozenWatch);
+      clearInterval(hudTimer);
       stopStream();
       document.removeEventListener("visibilitychange", onVisible);
       document.removeEventListener("keydown", onKey);
@@ -358,37 +366,38 @@ export function mount(el, navigate) {
   };
 }
 
-function detectorChip(detection) {
+const fact = (label, value, tone) => h("div", { class: "fact" }, h("dt", { text: label }), h("dd", {}, tone ? h("span", { class: "dot " + tone }) : null, value));
+
+function detectorFact(detection) {
   if (detection.mode === "off") return null;
-  if (detection.state === "ready") return chip(t("Object detection"), "ok");
-  if (detection.state === "error") return chip(t("Detector unavailable"), "bad");
-  return chip(t("Detector loading"), "warn");
+  if (detection.state === "ready") return fact(t("Detector"), t("Active"), "ok");
+  if (detection.state === "error") return fact(t("Detector"), t("Unavailable"), "bad");
+  return fact(t("Detector"), t("Loading"), "warn");
 }
 
 function renderHero(hero, s) {
   if (!s.camera.enabled) {
     hero.className = "card hero off";
     hero.replaceChildren(
-      h("div", { class: "hero-main" }, icon("eyeOff", "hero-ico"), h("div", {}, h("div", { class: "hero-title", text: t("Camera disabled") }), h("div", { class: "muted", text: t("Nothing is recorded or alerted until you enable it") }))),
-      h("div", { class: "chips" }, chip(t("Disabled"), "warn"))
+      h("div", { class: "hero-main" }, icon("eyeOff", "hero-ico"), h("div", {}, h("div", { class: "hero-title", text: t("Camera disabled") }), h("div", { class: "muted", text: t("Nothing is recorded or alerted until you enable it") })))
     );
     return;
   }
   const watching = s.armed;
   hero.className = "card hero " + (watching ? "on" : "off");
   const tone = s.camera.standby ? "warn" : s.camera.online ? "ok" : "bad";
-  const text = s.camera.standby ? t("Camera off") : s.camera.online ? t("Camera connected") : t("Camera has no signal");
+  const text = s.camera.standby ? t("Standby") : s.camera.online ? t("Connected") : t("No signal");
   hero.replaceChildren(
     h("div", { class: "hero-main" },
       icon(watching ? "shield" : "shieldOff", "hero-ico"),
       h("div", {}, h("div", { class: "hero-title", text: watching ? t("Watching") : t("Not watching") }), h("div", { class: "muted", text: REASONS[s.reason] ? t(REASONS[s.reason]) : s.reason }))
     ),
-    h("div", { class: "chips" },
-      chip(text, tone),
-      detectorChip(s.detection),
-      s.motion && !s.recording ? chip(t("Motion"), "warn") : null,
-      s.camera.rssi ? chip(`${s.camera.rssi} dBm`) : null,
-      s.camera.fps ? chip(`${s.camera.fps} fps`) : null
+    h("dl", { class: "facts" },
+      fact(t("Camera"), text, tone),
+      detectorFact(s.detection),
+      s.motion && !s.recording ? fact(t("Motion"), t("Detected"), "warn") : null,
+      s.camera.rssi ? fact(t("Signal"), `${s.camera.rssi} dBm`) : null,
+      s.camera.fps ? fact(t("Frame rate"), `${s.camera.fps} fps`) : null
     )
   );
 }

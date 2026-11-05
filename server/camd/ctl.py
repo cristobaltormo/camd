@@ -3,6 +3,7 @@ import getpass
 import sys
 import time
 
+from . import __version__
 from .auth import Auth, AuthError
 from .config import load
 from .db import Database
@@ -27,6 +28,7 @@ def set_password(auth: Auth) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="camd.ctl", description="Local administration of the camera service")
+    parser.add_argument("--version", action="version", version=f"camd {__version__}")
     parser.add_argument("command", choices=("enroll", "password", "revoke-all", "devices"))
     command = parser.parse_args().command
 

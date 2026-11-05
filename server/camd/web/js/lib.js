@@ -1,7 +1,7 @@
 import { locale, t } from "./text.js";
 
 const svg = (body) =>
-  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 
 export const ICONS = {
   live: svg('<path d="M15 10l5-3v10l-5-3z"/><rect x="2" y="6" width="13" height="12" rx="2.5"/>'),
@@ -24,7 +24,7 @@ export const ICONS = {
   key: svg('<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M14 9l2 2"/>'),
   film: svg('<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M10 9.5v5l4.5-2.5z"/>'),
   signal: svg('<path d="M4 20v-3M9 20v-7M14 20V9M19 20V4"/>'),
-  logo: svg('<path d="M3 12s3.6-6.5 9-6.5S21 12 21 12s-3.6 6.5-9 6.5S3 12 3 12z"/><circle cx="12" cy="12" r="3"/>'),
+  logo: svg('<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4"/><circle cx="14.2" cy="9.8" r=".9" fill="currentColor" stroke="none"/>'),
   moon: svg('<path d="M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z"/>'),
   sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>'),
   check: svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
@@ -323,4 +323,11 @@ export function cameraState(cam) {
 export function labelName(label) {
   const translated = t(`label:${label}`);
   return translated === `label:${label}` ? label.charAt(0).toUpperCase() + label.slice(1) : translated;
+}
+
+export function detectionBox(item) {
+  const [x, y, width, height] = item.box;
+  const frame = h("div", { class: "box" + (y < 0.07 ? " inset" : "") }, h("span", { text: `${labelName(item.label)} ${Math.round(item.confidence * 100)}%` }));
+  Object.assign(frame.style, { left: x * 100 + "%", top: y * 100 + "%", width: width * 100 + "%", height: height * 100 + "%" });
+  return frame;
 }

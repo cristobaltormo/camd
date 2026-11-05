@@ -1,7 +1,9 @@
+import argparse
 import logging
 
 import uvicorn
 
+from . import __version__
 from .app import create_app
 from .config import load
 
@@ -9,6 +11,9 @@ SHUTDOWN_GRACE_S = 5
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(prog="camd", description="Self-hosted ESP32-CAM server")
+    parser.add_argument("--version", action="version", version=f"camd {__version__}")
+    parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     cfg = load()
     uvicorn.run(

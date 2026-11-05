@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+@font-face { font-family: Inter; src: url("../../server/camd/web/fonts/inter.woff2") format("woff2"); font-weight: 100 900; }
+* { box-sizing: border-box; margin: 0; }
+body { width: 1280px; height: 640px; background: #0b0c0f; color: #e9ebee; font-family: Inter, sans-serif; display: flex; overflow: hidden; position: relative; }
+.copy { padding: 84px 0 0 84px; width: 600px; }
+.mark { width: 72px; height: 72px; }
+h1 { font-size: 92px; font-weight: 650; letter-spacing: -.04em; margin-top: 36px; line-height: 1; }
+p { font-size: 30px; line-height: 1.35; color: #8d939e; margin-top: 24px; letter-spacing: -.01em; }
+.tags { position: absolute; left: 84px; bottom: 76px; display: flex; gap: 12px; font-size: 20px; color: #8d939e; }
+.tags span { border: 1px solid #2b3039; border-radius: 8px; padding: 8px 14px; }
+.shot { position: absolute; left: 700px; top: 70px; width: 880px; border-radius: 14px; border: 1px solid #2b3039; box-shadow: 0 30px 80px rgba(0, 0, 0, .6); }
+</style></head><body>
+<div class="copy">
+<img class="mark" src="../../server/camd/web/icon.svg" alt="">
+<h1>camd</h1>
+<p>A self-hosted camera that tells people from shadows.</p>
+</div>
+<div class="tags"><span>ESP32-CAM</span><span>Object detection</span><span>No cloud</span></div>
+<img class="shot" src="../../docs/images/live.png" alt="">
+</body></html>
