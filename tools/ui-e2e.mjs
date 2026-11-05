@@ -85,6 +85,15 @@ const tests = {
     await waitFor("document.querySelectorAll('.event').length === 1", "only the noise");
     await clickText(".filter", "All");
   },
+  async "the day view draws a timeline and opens an event from it"() {
+    await js("localStorage.setItem('cam.eventsView', JSON.stringify('day'))");
+    await goto("/events");
+    await waitFor("document.querySelectorAll('.timeline .mark').length >= 1", "marks on the timeline");
+    await click(".timeline .mark");
+    await waitFor("document.querySelector('.sheet')", "player from the timeline");
+    await goto("/events");
+    await js("localStorage.removeItem('cam.eventsView')");
+  },
   async "events list, delete from the player and protect"() {
     await goto("/events");
     await waitFor("document.querySelectorAll('.event').length === 6", "5 events");

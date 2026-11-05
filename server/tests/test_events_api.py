@@ -61,3 +61,11 @@ def test_label_filter_and_hidden_noise(env):
     visible = env.get("/api/events", params={"hide_unconfirmed": True}).json()["events"]
     assert noise not in [e["id"] for e in visible] and len(visible) == 2
     assert env.get("/api/events/count", params={"since": 0}).json()["count"] == 2
+
+
+def test_events_can_be_listed_for_a_time_range(env):
+    now = 1_000_000.0
+    for offset in (0, 3600, 7200):
+        env.rt.db.execute("INSERT INTO events(start_ts, end_ts, status, kind) VALUES(?, ?, 'done', 'motion')", (now + offset, now + offset + 5))
+    got = env.get(f"/api/events?after={now + 3000}&before={now + 7000}").json()["events"]
+    assert [round(e["start"]) for e in got] == [round(now + 3600)]

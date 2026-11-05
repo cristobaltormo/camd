@@ -20,6 +20,13 @@ export default {
   "First start": "Primer arranque",
   "Filter": "Filtrar",
   "Select": "Seleccionar",
+  "Day": "Día",
+  "Events view": "Vista de eventos",
+  "Previous day": "Día anterior",
+  "Next day": "Día siguiente",
+  "Events of the day": "Eventos del día",
+  "List": "Lista",
+
   "Load more": "Cargar más",
   "Events": "Eventos",
   "Cancel": "Cancelar",

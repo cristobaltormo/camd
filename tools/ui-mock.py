@@ -4,7 +4,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 WEB = Path(__file__).resolve().parent.parent / "server" / "camd" / "web"
 SCENES = Path(os.environ["UI_MOCK_SCENES"]) if os.environ.get("UI_MOCK_SCENES") else None
@@ -152,12 +152,14 @@ class Handler(BaseHTTPRequestHandler):
         return json.loads(self.rfile.read(length) or b"{}") if length else {}
 
     def do_GET(self):
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
+        query = {key: float(values[0]) for key, values in parse_qs(parsed.query).items() if key in ("after", "before")}
         with LOCK:
             routes = {
                 "/api/auth/state": {"logged_in": True, "passkeys": True, "password": False, "site_name": "Bedroom", "language": "en"},
                 "/api/status": status(),
-                "/api/events": {"events": STATE["events"]},
+                "/api/events": {"events": [e for e in STATE["events"] if query.get("after", 0) <= e["start"] < query.get("before", 1e18)]},
                 "/api/events/count": {"count": 2},
                 "/api/photos": {"photos": STATE["photos"]},
                 "/api/settings": STATE["settings"],

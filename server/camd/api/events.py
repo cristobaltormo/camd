@@ -27,6 +27,7 @@ def event_file(svc: Services, event_id: int, column: str, media_type: str, filen
 def list_events(
     limit: int = 50,
     before: float | None = None,
+    after: float | None = None,
     label: str | None = None,
     hide_unconfirmed: bool = False,
     svc: Services = Depends(services),
@@ -35,6 +36,9 @@ def list_events(
     if before is not None:
         clauses.append("start_ts < ?")
         params.append(before)
+    if after is not None:
+        clauses.append("start_ts >= ?")
+        params.append(after)
     if label:
         clauses.append("labels LIKE ?")
         params.append(f'%"{label.replace(chr(34), "")}"%')

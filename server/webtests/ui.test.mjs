@@ -95,3 +95,21 @@ test("the list asks the server for what the filter needs", () => {
   assert.equal(queryFor("people"), "&hide_unconfirmed=true&label=person");
   assert.equal(queryFor("noise"), "");
 });
+
+test("day segments place events along the day and keep tiny ones visible", async () => {
+  const { daySegments, kindOf, startOfDayTs, endOfDayTs } = await import("../camd/web/js/timeline.js");
+  const day = startOfDayTs(0);
+  const events = [
+    event({ id: 1, start: day + 3600, end: day + 7200, duration: 3600, labels: ["person"] }),
+    event({ id: 2, start: day + 43200, end: day + 43200, duration: 0, kind: "manual" }),
+    event({ id: 3, start: day - 10 }),
+  ];
+  const segments = daySegments(events, day);
+  assert.equal(segments.length, 2);
+  assert.ok(Math.abs(segments[0].left - 1 / 24) < 0.001 && Math.abs(segments[0].width - 1 / 24) < 0.001);
+  assert.ok(segments[1].width >= 0.004);
+  assert.deepEqual(segments.map((s) => s.kind), ["person", "clip"]);
+  assert.equal(kindOf(event({ labels: ["cat"] })), "object");
+  assert.equal(kindOf(event()), "motion");
+  assert.ok(endOfDayTs(day) > day);
+});

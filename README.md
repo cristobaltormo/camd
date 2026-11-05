@@ -29,7 +29,7 @@ Most motion cameras alert you for every shadow, curtain and change of light unti
 
 - **Recognises what moved.** [NanoDet](https://github.com/RangiLyu/nanodet) (3.8 MB, 80 object classes) looks at frames with motion. You pick which objects matter. See [how detection works](docs/detection.md).
 - **Light on resources.** About 3% of one core in a quiet room, 120 to 150 MB of RAM, 50 ms per inference. Recordings go to disk while they are made, so memory stays flat however long an event lasts. See the [numbers](#resources).
-- **An app, not a dashboard.** Live view, events with the best frame and its boxes, photos and manual clips, as a progressive web app that installs on a phone or desktop, in English and Spanish, light and dark.
+- **An app, not a dashboard.** Live view, events with the best frame and its boxes (as a list or on a timeline of the day), photos and manual clips, as a progressive web app that installs on a phone or desktop, in English and Spanish, light and dark.
 - **Alerts where you are.** Web Push, [ntfy](https://ntfy.sh) and Notifich, with quiet hours and a cooldown between alerts.
 - **Knows when you are home.** It arms itself when your phone leaves the wifi, and a privacy switch turns the camera sensor off.
 - **Secure by default.** Passkeys or a password, revocable sessions, CSRF protection and a strict content security policy. Nothing is exposed unless you decide to. See [security](docs/security.md).
@@ -46,6 +46,9 @@ Most motion cameras alert you for every shadow, curtain and change of light unti
   <tr>
     <td><img src="docs/images/detection.png" alt="Detection settings"></td>
     <td><img src="docs/images/live-light.png" alt="The light theme"></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/images/timeline.png" alt="The events of a day on a timeline"></td>
   </tr>
 </table>
 
@@ -162,8 +165,6 @@ Lower the resolution in **Settings, Camera** to cut CPU and wifi use further.
 Ideas, not promises, roughly in the order they are wanted:
 
 - More than one camera on one server.
-- Alert only for objects inside a drawn zone.
-- A timeline to scrub through a day.
 - Other ESP32 boards (S3 and XIAO) in the firmware.
 - Sound from an I2S microphone.
 

@@ -1,5 +1,6 @@
 import { api, busy, confirmDialog, detectionBox, emptyState, fmtAgo, fmtDay, fmtDur, fmtTime, h, icon, labelName, saveToDevice, store, toast } from "./lib.js";
 import { count, t } from "./text.js";
+import { endOfDayTs, startOfDayTs, timeline } from "./timeline.js";
 
 const PAGE = 60;
 const POLL_MS = 15000;
@@ -44,7 +45,7 @@ const labelBadge = (labels) => {
 };
 
 export function mount(el, navigate) {
-  const st = { events: [], done: false, filter: store.get("eventsFilter", "all"), selecting: false, picked: new Set(), modal: null };
+  const st = { events: [], done: false, view: store.get("eventsView", "list"), dayOffset: 0, filter: store.get("eventsFilter", "all"), selecting: false, picked: new Set(), modal: null };
   let destroyed = false;
   store.set("eventsSeen", Date.now() / 1000);
   window.dispatchEvent(new Event("cam:seen"));
@@ -52,16 +53,27 @@ export function mount(el, navigate) {
   const counter = h("div", { class: "muted" });
   const chips = h("div", { class: "filters", role: "group", "aria-label": t("Filter") });
   const selectBtn = h("button", { class: "btn small" }, icon("select"), t("Select"));
+  const viewButtons = [["list", t("List")], ["day", t("Day")]].map(([id, label]) => h("button", { text: label, "data-view": id, onclick: async () => { st.view = id; store.set("eventsView", id); try { await load(true); } catch (e) { toast(e.message, "bad"); } draw(); } }));
+  const viewSwitch = h("div", { class: "seg", role: "group", "aria-label": t("Events view") }, viewButtons);
+  const dayNav = h("div", { class: "day-nav", hidden: true });
   const list = h("div", { class: "event-list" });
   const more = h("button", { class: "btn block more", text: t("Load more") });
   const bulk = h("div", { class: "bulkbar", hidden: true });
 
   el.append(
-    h("header", { class: "page-head" }, h("div", {}, h("h1", { text: t("Events") }), counter), h("div", { class: "row tight" }, selectBtn)),
-    chips, list, more, bulk
+    h("header", { class: "page-head" }, h("div", {}, h("h1", { text: t("Events") }), counter), h("div", { class: "row tight" }, viewSwitch, selectBtn)),
+    chips, dayNav, list, more, bulk
   );
 
   async function load(reset) {
+    if (st.view === "day") {
+      const dayStart = startOfDayTs(st.dayOffset);
+      const { events } = await api(`/api/events?limit=200${queryFor(st.filter)}&after=${dayStart}&before=${endOfDayTs(dayStart)}`);
+      if (destroyed) return;
+      st.events = events;
+      st.done = true;
+      return;
+    }
     const before = !reset && st.events.length ? st.events[st.events.length - 1].start : null;
     const { events } = await api(`/api/events?limit=${PAGE}${queryFor(st.filter)}` + (before ? `&before=${before}` : ""));
     if (destroyed) return;
@@ -79,9 +91,25 @@ export function mount(el, navigate) {
     ));
   }
 
+  function drawDayNav() {
+    dayNav.hidden = st.view !== "day";
+    if (dayNav.hidden) return;
+    const dayStart = startOfDayTs(st.dayOffset);
+    const shift = async (delta) => { st.dayOffset = Math.max(0, st.dayOffset + delta); try { await load(true); } catch (e) { toast(e.message, "bad"); } draw(); };
+    dayNav.replaceChildren(
+      h("div", { class: "row" },
+        h("button", { class: "btn small", "aria-label": t("Previous day"), onclick: () => shift(1) }, icon("prev")),
+        h("strong", { text: fmtDay(dayStart) }),
+        h("button", { class: "btn small", "aria-label": t("Next day"), disabled: st.dayOffset === 0, onclick: () => shift(-1) }, icon("next"))),
+      timeline(st.events.filter((e) => matches(st.filter, e)), dayStart, (id) => navigate(`/events/${id}`), t("Events of the day"))
+    );
+  }
+
   function draw() {
     if (destroyed) return;
     drawChips();
+    drawDayNav();
+    viewButtons.forEach((button) => { const on = button.dataset.view === st.view; button.classList.toggle("on", on); button.setAttribute("aria-pressed", String(on)); });
     const items = visible();
     counter.textContent = st.events.length ? count(items.length, "{n} event", "{n} events") : "";
     more.hidden = st.done;
@@ -261,6 +289,12 @@ export function mount(el, navigate) {
   async function poll() {
     if (destroyed || document.hidden || st.selecting) return;
     try {
+      if (st.view === "day") {
+        const before = signature(st.events);
+        await load(true);
+        if (signature(st.events) !== before) draw();
+        return;
+      }
       const { events } = await api(`/api/events?limit=${PAGE}${queryFor(st.filter)}`);
       if (destroyed) return;
       const merged = reconcile(st.events, events);

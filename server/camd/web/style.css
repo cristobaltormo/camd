@@ -223,6 +223,15 @@ kbd { font: 500 11.5px/1 var(--mono); padding: 4px 6px; border-radius: 5px; back
 .tick.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .selecting .tick { display: flex; }
 .more { margin-top: 20px; }
+.day-nav { margin: 0 0 16px; display: flex; flex-direction: column; gap: 12px; }
+.timeline { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px 8px; }
+.timeline-strip { position: relative; height: 34px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+.timeline .mark { position: absolute; top: 0; bottom: 0; min-width: 3px; padding: 0; border: 0; border-radius: 2px; background: var(--faint); opacity: .9; }
+.timeline .mark:hover { opacity: 1; filter: brightness(1.2); }
+.timeline .mark.person { background: var(--accent); }
+.timeline .mark.object { background: var(--ok); }
+.timeline .mark.clip { background: var(--warn); }
+.timeline-hours { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--faint); }
 .bulkbar, .savebar { position: fixed; z-index: 16; left: 12px; right: 12px; bottom: calc(var(--nav-h) + 10px + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 8px 8px 16px; background: var(--raised); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: var(--shadow); font-weight: 500; animation: rise .18s ease-out; }
 
 /* modal and dialogs */
