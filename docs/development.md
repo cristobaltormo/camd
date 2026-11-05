@@ -45,7 +45,13 @@ python tools/ui-mock.py                  # http://127.0.0.1:8199, fake API with 
 node --experimental-websocket tools/ui-e2e.mjs
 ```
 
-`ui-e2e.mjs` drives headless Chromium (set `CHROMIUM` to the binary if it is not called `chromium`). Set `UI_MOCK_IMAGE` to a JPEG and `UI_MOCK_DETECT=1` to take screenshots with a detection box.
+`ui-e2e.mjs` drives headless Chromium (set `CHROMIUM` to the binary if it is not called `chromium`).
+
+## Screenshots and brand images
+
+`make screenshots` (`tools/run-screenshots.sh`) builds the README images. `tools/make_scenes.py` resizes `docs/images/scene.jpg` like the camera would, cuts the thumbnails, makes a short clip with FFmpeg and runs the real detector on the photograph; `ui-mock.py` serves them, and `screenshots.mjs` captures desktop and phone views in dark and light. It needs OpenCV, FFmpeg and Chromium, and writes into `docs/images/`.
+
+`make brand` (`tools/render-brand.sh`) renders the app icons from `server/camd/web/icon.svg` and the social preview from `tools/brand/social.html`.
 
 The interface has no build step. `server/stamp.py` adds a content hash to every asset URL when the Docker image or the installer packages it, so a browser can never mix old and new files; the sources in git carry no stamps.
 

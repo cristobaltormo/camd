@@ -5,7 +5,7 @@ camd needs Python 3.11 or newer, FFmpeg and about 300 MB of RAM. It runs on x86-
 ## Docker
 
 ```bash
-git clone https://github.com/YOUR-USER/camd && cd camd
+git clone https://github.com/OWNER/camd && cd camd
 cp .env.example .env
 ```
 
@@ -33,7 +33,7 @@ Data (database, clips, photos, the detection model) lives in the `camd-data` vol
 ## Debian or Ubuntu
 
 ```bash
-git clone https://github.com/YOUR-USER/camd && cd camd
+git clone https://github.com/OWNER/camd && cd camd
 sudo deploy/install.sh
 ```
 
