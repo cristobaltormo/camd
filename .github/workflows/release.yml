@@ -6,31 +6,44 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 jobs:
   firmware:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install platformio esptool
       - run: pio run -d firmware
       - run: firmware/tools/merge.sh
+      - id: notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '$0 ~ "^## " v "$" {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
       - uses: softprops/action-gh-release@v2
         with:
           files: firmware/camd-esp32cam.bin
+          body_path: notes.md
       - run: |
           mkdir site
           cp firmware/camd-esp32cam.bin site/
           cp firmware/web-installer/* site/
           sed -i "s/__VERSION__/${GITHUB_REF_NAME}/" site/manifest.json
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
+        if: ${{ !github.event.repository.private }}
         with:
           path: site
+
+  pages:
+    needs: firmware
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+    steps:
       - uses: actions/deploy-pages@v4

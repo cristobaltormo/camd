@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   server:
     runs-on: ubuntu-latest
@@ -15,10 +22,12 @@ jobs:
       run:
         working-directory: server
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: server/pyproject.toml
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: pip install -e '.[dev]'
       - run: ruff check .
@@ -28,28 +37,35 @@ jobs:
   web:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - run: node --test server/webtests/
       - run: |
           python3 tools/ui-mock.py &
           sleep 1
-          CHROMIUM=google-chrome node --experimental-websocket tools/ui-e2e.mjs
+          node tools/ui-e2e.mjs
+        env:
+          CHROMIUM: google-chrome
 
   firmware:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
       - run: pip install platformio
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('firmware/platformio.ini') }}
       - run: pio run -d firmware
 
   image:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker build -t camd .

@@ -1,44 +1,20 @@
-import { spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { launch, sleep } from "./cdp.mjs";
 
 const BASE = process.env.BASE;
 const COOKIE = process.env.COOKIE;
 const SHOTS = process.env.SHOTS;
 if (!BASE || !COOKIE) throw new Error("BASE and COOKIE are required");
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
-const PORT = 9334;
-const profile = mkdtempSync(join(tmpdir(), "ui-smoke-"));
-const args = ["--headless=new", "--no-sandbox", "--disable-gpu", `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`, "--window-size=390,844", "about:blank"];
-if (process.env.RESOLVE) args.unshift(`--host-resolver-rules=${process.env.RESOLVE}`);
-const chrome = spawn(process.env.CHROMIUM || "chromium", args, { stdio: "ignore" });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const problems = [];
 
-let wsUrl;
-for (let i = 0; i < 60 && !wsUrl; i++) {
-  try { wsUrl = (await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()).find((t) => t.type === "page")?.webSocketDebuggerUrl; } catch (_) {}
-  if (!wsUrl) await sleep(250);
-}
-const ws = new WebSocket(wsUrl);
-await new Promise((r) => ws.addEventListener("open", r));
-let nextId = 0;
-const waiting = new Map();
-ws.addEventListener("message", (m) => {
-  const msg = JSON.parse(m.data);
-  if (msg.id && waiting.has(msg.id)) { waiting.get(msg.id)(msg); waiting.delete(msg.id); return; }
+const browser = await launch({ port: 9334, width: 390, height: 844, extraArgs: process.env.RESOLVE ? [`--host-resolver-rules=${process.env.RESOLVE}`] : [] });
+const { send, js } = browser;
+browser.onEvent((msg) => {
   if (msg.method === "Runtime.exceptionThrown") problems.push("exception: " + (msg.params.exceptionDetails.exception?.description || msg.params.exceptionDetails.text));
   if (msg.method === "Runtime.consoleAPICalled" && msg.params.type === "error") problems.push("console.error: " + msg.params.args.map((a) => a.value ?? a.description).join(" "));
 });
-const send = (method, params = {}) => new Promise((resolve) => { const id = ++nextId; waiting.set(id, resolve); ws.send(JSON.stringify({ id, method, params })); });
-const js = async (expression) => {
-  const r = await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
-  if (r.result.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description || "evaluate failed");
-  return r.result.result.value;
-};
-await send("Runtime.enable");
-await send("Page.enable");
 await send("Network.enable");
 await send("Network.setCookie", { name: "cam_session", value: COOKIE, url: BASE, secure: true, httpOnly: true });
 
@@ -77,7 +53,5 @@ await check("build matches the server", async () => {
 });
 if (problems.length) { failed++; console.log("FAIL page errors:\n  " + [...new Set(problems)].join("\n  ")); } else console.log("PASS no page errors");
 
-ws.close();
-chrome.kill();
-rmSync(profile, { recursive: true, force: true });
+await browser.close();
 process.exit(failed ? 1 : 0);
