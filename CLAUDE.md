@@ -16,7 +16,7 @@ Self-hosted ESP32-CAM server: live view, motion and object detection, clips, ale
 |---|---|
 | Server tests | `cd server && pytest -q` (needs ffmpeg) |
 | Lint and format | `cd server && ruff check . && ruff format .` |
-| Interface tests | `cd server && node --test webtests/` |
+| Interface tests | `cd server && node --test` |
 | Browser tests | `python tools/ui-mock.py &` then `node --experimental-websocket tools/ui-e2e.mjs` |
 | Fake camera | `python tools/fake_camera.py FRAMES_DIR --token test` |
 | Firmware build | `cd firmware && pio run` |
