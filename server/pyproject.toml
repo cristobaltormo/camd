@@ -1,6 +1,6 @@
 [project]
 name = "camd"
-version = "2.1.0"
+version = "2.2.0"
 description = "Self-hosted camera server for the ESP32-CAM: live view, motion and object detection, clips, alerts"
 requires-python = ">=3.11"
 license = "MIT"

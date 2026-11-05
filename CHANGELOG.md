@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.2.0
+
+- Several cameras on one server: `[[cameras]]` tables in the configuration, one runtime and data directory each, a selector in the app, alerts that carry the camera name. See [configuration](docs/configuration.md#several-cameras).
+- Alert zones: an object raises an alert only when the centre of its box is inside a zone drawn in Settings, Detection.
+- A day view in Events with a 24 hour timeline coloured by what was seen; `GET /api/events` accepts `after`.
+- CI runs `mypy` and enforces a coverage floor of 85%.
+
 ## 2.1.0
 
 A new interface and the project files expected of a public repository.
