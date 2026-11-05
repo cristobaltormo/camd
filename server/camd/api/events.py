@@ -47,7 +47,7 @@ def list_events(
 
 @router.get("/count")
 def count_events(since: float = 0, svc: Services = Depends(services)):
-    row = svc.db.one(f"SELECT COUNT(*) AS n FROM events WHERE start_ts > ? AND {VISIBLE}", (since,))
+    row = svc.db.row(f"SELECT COUNT(*) AS n FROM events WHERE start_ts > ? AND {VISIBLE}", (since,))
     return {"count": row["n"]}
 
 

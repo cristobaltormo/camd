@@ -46,7 +46,7 @@ class WebPush:
         return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
 
     def count(self) -> int:
-        return self.db.one("SELECT COUNT(*) AS n FROM push_subs")["n"]
+        return self.db.row("SELECT COUNT(*) AS n FROM push_subs")["n"]
 
     def subscribe(self, subscription: dict) -> None:
         self.db.execute(

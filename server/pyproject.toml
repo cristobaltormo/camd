@@ -29,7 +29,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "httpx", "ruff", "cbor2"]
+dev = ["pytest", "pytest-cov", "httpx", "ruff", "cbor2", "mypy", "types-requests"]
 
 [project.urls]
 Homepage = "https://github.com/cristobaltormo/camd"
@@ -59,3 +59,22 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "C4", "PIE", "RET", "ERA"]
 ignore = ["B008", "B904", "SIM108"]
+
+[tool.coverage.run]
+source = ["camd"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 85
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["camd.events", "camd.runtime", "camd.spool", "camd.motion", "camd.detect", "camd.config", "camd.messages", "camd.grabber", "camd.api.events"]
+disable_error_code = ["arg-type", "union-attr", "attr-defined", "assignment", "call-overload", "misc"]

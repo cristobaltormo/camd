@@ -116,6 +116,12 @@ class Database:
         with self._lock:
             return self._conn.execute(sql, params).fetchone()
 
+    def row(self, sql: str, params: tuple = ()) -> sqlite3.Row:
+        found = self.one(sql, params)
+        if found is None:
+            raise LookupError(sql)
+        return found
+
     def get_setting(self, key: str, default: Any = None) -> Any:
         row = self.one("SELECT value FROM settings WHERE key=?", (key,))
         return json.loads(row["value"]) if row else default

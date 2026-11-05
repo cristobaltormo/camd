@@ -43,7 +43,7 @@ def purge(cfg: Config, db: Database) -> int:
         removed += 1
 
     cap = int(cfg.max_disk_gb * 1024**3)
-    while db.one("SELECT COALESCE(SUM(size_bytes), 0) AS total FROM events")["total"] > cap:
+    while db.row("SELECT COALESCE(SUM(size_bytes), 0) AS total FROM events")["total"] > cap:
         oldest = db.one("SELECT id, clip_path, thumb_path FROM events WHERE status != 'recording' AND keep=0 ORDER BY start_ts LIMIT 1")
         if oldest is None:
             break

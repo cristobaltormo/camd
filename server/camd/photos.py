@@ -26,10 +26,10 @@ class Photos:
         self.db = db
 
     def count(self) -> int:
-        return self.db.one("SELECT COUNT(*) AS n FROM photos")["n"]
+        return self.db.row("SELECT COUNT(*) AS n FROM photos")["n"]
 
     def usage(self) -> tuple[int, int]:
-        row = self.db.one("SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS bytes FROM photos")
+        row = self.db.row("SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS bytes FROM photos")
         return row["n"], row["bytes"]
 
     def save(self, jpeg: bytes, ts: float | None = None) -> dict:

@@ -269,7 +269,7 @@ class Runtime:
         armed, reason = self.arming.decision()
         last = self.db.one("SELECT * FROM events WHERE status='done' AND (analyzed=0 OR confirmed=1) ORDER BY start_ts DESC LIMIT 1")
         info = self.camera_info or {}
-        usage = self.db.one("SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS bytes FROM events")
+        usage = self.db.row("SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS bytes FROM events")
         photo_count, photo_bytes = self.photos.usage()
         detected_at, detected = self.last_detections
         fresh = time.time() - detected_at < DETECTIONS_FRESH_S

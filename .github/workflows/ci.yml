@@ -32,7 +32,8 @@ jobs:
       - run: pip install -e '.[dev]'
       - run: ruff check .
       - run: ruff format --check .
-      - run: pytest -q
+      - run: mypy camd
+      - run: pytest -q --cov
 
   web:
     runs-on: ubuntu-latest

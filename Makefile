@@ -1,10 +1,13 @@
-.PHONY: install test lint format web firmware image screenshots brand run
+.PHONY: install test types lint format web firmware image screenshots brand run
 
 install:
 	cd server && pip install -e '.[dev]'
 
 test:
-	cd server && pytest -q
+	cd server && pytest -q --cov
+
+types:
+	cd server && mypy camd
 
 lint:
 	cd server && ruff check . && ruff format --check .
