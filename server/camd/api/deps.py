@@ -21,8 +21,12 @@ class Services:
     build: str = "dev"
 
 
+CAMERA_COOKIE = "cam_camera"
+
+
 def services(request: Request) -> Services:
-    return request.app.state.services
+    cameras = request.app.state.cameras
+    return cameras.get(request.cookies.get(CAMERA_COOKIE, ""), request.app.state.services)
 
 
 def client_ip(request: Request, trust_proxy: bool) -> str:

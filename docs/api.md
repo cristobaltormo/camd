@@ -28,6 +28,7 @@ Sign-in endpoints are limited to ten attempts per minute per address.
 
 | Method and path | Purpose |
 |---|---|
+| `GET /api/cameras` | the configured cameras; the one used for the other calls is chosen with the `cam_camera` cookie |
 | `GET /api/status` | camera, detector, armed state, current detections, last event, storage |
 | `POST /api/mode` | `{mode: "auto" \| "armed" \| "disarmed"}` |
 | `POST /api/snooze` | `{minutes}`, 0 resumes |

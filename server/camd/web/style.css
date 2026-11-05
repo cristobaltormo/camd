@@ -223,6 +223,10 @@ kbd { font: 500 11.5px/1 var(--mono); padding: 4px 6px; border-radius: 5px; back
 .tick.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .selecting .tick { display: flex; }
 .more { margin-top: 20px; }
+.camera-bar { display: flex; align-items: center; gap: 10px; padding: calc(12px + env(safe-area-inset-top)) 16px 0; max-width: 1320px; margin: 0 auto; }
+@media (min-width: 720px) { .camera-bar { padding-left: 28px; padding-right: 28px; } }
+@media (min-width: 1100px) { .camera-bar { padding-left: 36px; padding-right: 36px; } }
+.camera-bar + .view .page-head { padding-top: 12px; min-height: 64px; }
 .day-nav { margin: 0 0 16px; display: flex; flex-direction: column; gap: 12px; }
 .timeline { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px 8px; }
 .timeline-strip { position: relative; height: 34px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }

@@ -50,10 +50,10 @@ class Env:
         return data
 
 
-def make_env(tmp_path, **overrides) -> Env:
+def make_env(tmp_path, extras=None, **overrides) -> Env:
     cfg = Config(data_dir=tmp_path, rp_id="localhost", origin=ORIGIN, camera_token="t", detection="off", **overrides)
     db = Database(cfg.db_path)
-    app = create_app(cfg, db, start=False)
+    app = create_app(cfg, db, start=False, extras=extras)
     return Env(cfg, db, app, TestClient(app, base_url=ORIGIN))
 
 

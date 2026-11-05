@@ -29,7 +29,7 @@ DETECTIONS_FRESH_S = 3.0
 
 
 class Runtime:
-    def __init__(self, cfg: Config, db: Database):
+    def __init__(self, cfg: Config, db: Database, notifier: Notifier | None = None):
         self.cfg = cfg
         self.db = db
         stored_retention = db.get_setting("retention_days")
@@ -40,7 +40,7 @@ class Runtime:
         self.presence = Presence(cfg.presence_devices, cfg.presence_grace_s)
         self.arming = Arming(db, self.presence)
         self.photos = Photos(cfg, db)
-        self.notifier = Notifier(cfg, db)
+        self.notifier = notifier or Notifier(cfg, db)
         self.mqtt = Mqtt(cfg, Commands(self._external_presence, self.set_mode, self.set_privacy))
         self.detector = MotionDetector(self.load_motion_settings())
         self.analyzer = DetectionWorker(cfg, self._on_detections)
@@ -191,8 +191,14 @@ class Runtime:
         self._last_push = now
         return True
 
+    def _send(self, title: str, body: str, url: str, tag: str) -> int:
+        if not self.cfg.camera_name:
+            return self.notifier.send(title, body, url, tag)
+        camera = self.cfg.camera_id
+        return self.notifier.send(f"{title} · {self.cfg.camera_name}", body, f"/?camera={camera}#{url.removeprefix('/#')}", f"{tag}-{camera}")
+
     def _notify(self, title: str, body: str, event_id: int, tag: str) -> None:
-        threading.Thread(target=self.notifier.send, args=(title, body, f"/#/events/{event_id}", tag), daemon=True, name="notify").start()
+        threading.Thread(target=self._send, args=(title, body, f"/#/events/{event_id}", tag), daemon=True, name="notify").start()
 
     def _event_started(self, event_id: int, start_ts: float, analyzed: bool) -> None:
         self.mqtt.publish("motion", "ON")
@@ -261,12 +267,12 @@ class Runtime:
             if self.grabber.online and self._offline_alerted:
                 self._offline_alerted = False
                 if self.cfg.notify_offline:
-                    self.notifier.send(translate(language, "back_title"), translate(language, "back_body"), "/", "offline")
+                    self._send(translate(language, "back_title"), translate(language, "back_body"), "/", "offline")
             return
         if not self._offline_alerted:
             self._offline_alerted = True
             if self.cfg.notify_offline:
-                self.notifier.send(translate(language, "offline_title"), translate(language, "offline_body"), "/", "offline")
+                self._send(translate(language, "offline_title"), translate(language, "offline_body"), "/", "offline")
 
     def status(self, version: str, build: str) -> dict:
         armed, reason = self.arming.decision()

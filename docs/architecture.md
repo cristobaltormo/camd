@@ -23,6 +23,8 @@
                                sessions, prefs)        Notifich)
 ```
 
+With several cameras the service builds one runtime per camera (own database, grabber, detector and recorder) and shares the sign-in and the alert channels. The `cam_camera` cookie picks which runtime a request talks to.
+
 ## Why it is built this way
 
 **The camera has one client.** The ESP32 serves a single stream connection, so the server reads it once and shares the frames with every browser. Opening the camera's address from a second place would steal the stream.

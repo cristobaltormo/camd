@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .. import __version__, prefs
 from ..arming import MODES
@@ -7,6 +7,16 @@ from .deps import Services, current_session, services
 from .schemas import ModeBody, PrivacyBody, SettingsBody, SnoozeBody
 
 router = APIRouter(prefix="/api", dependencies=[Depends(current_session)])
+
+
+@router.get("/cameras")
+def list_cameras(request: Request, svc: Services = Depends(services)):
+    return {
+        "cameras": [
+            {"id": camera_id, "name": item.cfg.camera_name or item.cfg.site_name, "current": item is svc}
+            for camera_id, item in request.app.state.cameras.items()
+        ]
+    }
 
 
 @router.get("/status")

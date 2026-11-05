@@ -55,3 +55,22 @@ Keys marked `(live)` can also be changed from the app (Settings). A value saved 
 | `camera_contrast` (live) | `0` | Contrast, -2 to 2. |
 | `camera_quality` (live) | `0` | JPEG quality, 4 (best) to 63. 0 keeps the camera default. |
 | `camera_framesize` (live) | `0` | Resolution code: 5 = 320x240, 8 = 640x480, 9 = 800x600, 10 = 1024x768. 0 keeps the camera default. |
+
+## Several cameras
+
+One server can watch more than one ESP32-CAM. Add a `[[cameras]]` table per extra camera to the configuration file; the top-level keys describe the first camera and are the defaults for the rest.
+
+```toml
+camera_host = "192.168.1.50"
+site_name = "Home"
+
+[[cameras]]
+id = "porch"
+name = "Porch"
+camera_host = "192.168.1.51"
+camera_token = "0123456789abcdef01234567"
+```
+
+Only keys listed above are accepted inside a table, plus `id` (lowercase letters, digits and dashes, unique) and `name` (what the app shows). Each extra camera gets its own data directory (`<data_dir>/cameras/<id>` unless you set `data_dir`), so events, photos, settings and the detection state are independent; sign-in, alert channels and the push subscriptions are shared. The MQTT topic defaults to `<mqtt_topic>_<id>` and alerts carry the camera name. Each camera needs its own token: set it as `camera_token` in its table.
+
+The app shows a camera selector when there is more than one. The selection is a cookie (`cam_camera`), so it applies to every tab of the same browser.

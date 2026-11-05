@@ -71,21 +71,30 @@ def web_manifest(cfg: Config) -> dict:
     }
 
 
-def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None = None, start: bool = True) -> FastAPI:
+def create_app(cfg: Config, db: Database | None = None, runtime: Runtime | None = None, start: bool = True, extras: list[Config] | None = None) -> FastAPI:
     db = db or Database(cfg.db_path)
     runtime = runtime or Runtime(cfg, db)
     build = BUILD_FILE.read_text().strip() if BUILD_FILE.exists() else "dev"
 
     @asynccontextmanager
     async def lifespan(_app):
+        runtimes = [service.rt for service in app.state.cameras.values()]
         if start:
-            runtime.start()
+            for item in runtimes:
+                item.start()
         yield
         if start:
-            runtime.stop()
+            for item in runtimes:
+                item.stop()
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
-    app.state.services = Services(cfg, db, runtime, Auth(cfg, db), ViewerPool(MAX_VIEWERS), build)
+    primary = Services(cfg, db, runtime, Auth(cfg, db), ViewerPool(MAX_VIEWERS), build)
+    app.state.services = primary
+    app.state.cameras = {cfg.camera_id: primary}
+    for extra in extras or []:
+        extra_db = Database(extra.db_path)
+        extra_runtime = Runtime(extra, extra_db, notifier=runtime.notifier)
+        app.state.cameras[extra.camera_id] = Services(extra, extra_db, extra_runtime, primary.auth, ViewerPool(MAX_VIEWERS), build)
 
     @app.middleware("http")
     async def guard(request: Request, call_next):

@@ -7,6 +7,10 @@ export const BUILD = "dev";
 const root = document.getElementById("app");
 
 let siteName = "Camera";
+let cameraList = [];
+
+const CAMERA_COOKIE = "cam_camera";
+const setCameraCookie = (id) => { document.cookie = `${CAMERA_COOKIE}=${encodeURIComponent(id)}; path=/; max-age=31536000; samesite=strict`; };
 
 const VIEWS = {
   live: { label: "Live", load: () => import("./live.js") },
@@ -135,7 +139,12 @@ function buildShell() {
   const tabs = h("nav", { class: "tabs", "aria-label": t("Sections") }, h("div", {}, links.map((l) =>
     h("a", { href: `#/${l.id}`, class: "tab", "data-page": l.id }, icon(l.id), h("span", { text: t(VIEWS[l.id].label) }), h("span", { class: "badge-count", hidden: true })))));
 
-  root.replaceChildren(h("div", { class: "shell" }, sidebar, h("main", { class: "content" }, banner, view), tabs));
+  const picker = cameraList.length > 1 ? h("div", { class: "camera-bar" },
+    icon("camera", "dim"),
+    h("select", { class: "select", "aria-label": t("Camera"), onchange: (e) => { setCameraCookie(e.target.value); location.reload(); } },
+      cameraList.map((camera) => h("option", { value: camera.id, text: camera.name, selected: camera.current })))) : null;
+
+  root.replaceChildren(h("div", { class: "shell" }, sidebar, h("main", { class: "content" }, banner, picker, view), tabs));
 
   const api_ = {
     view,
@@ -174,7 +183,13 @@ async function pollShell() {
   } catch (_) {}
 }
 
-function enterApp() {
+async function enterApp() {
+  const wanted = new URLSearchParams(location.search).get("camera");
+  if (wanted) {
+    setCameraCookie(wanted);
+    history.replaceState(null, "", location.pathname + location.hash);
+  }
+  try { cameraList = (await api("/api/cameras")).cameras; } catch (_) { cameraList = []; }
   shell = buildShell();
   window.addEventListener("hashchange", route);
   window.addEventListener("cam:seen", () => shell && shell.setBadge(0));

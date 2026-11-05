@@ -2,7 +2,7 @@
 
 **Does it send anything to the cloud?** No. The video stays between the camera and your server. The detection model runs locally. Alerts go through the channel you configure (your browser vendor's push service, ntfy, or Notifich) and contain only a title and a line of text.
 
-**Can I use more than one camera?** One server serves one camera today. Run a second instance on another port with its own data directory for a second one. Native multi-camera support is on the [roadmap](../README.md#roadmap).
+**Can I use more than one camera?** Yes. Add a `[[cameras]]` table per extra camera; see [several cameras](configuration.md#several-cameras). Each one keeps its own events and settings, and the app has a selector.
 
 **Does it work with other ESP32-CAM boards?** The firmware has the AI-Thinker pin map. Other boards need their pins in `firmware/src/pins.h`; the server does not care which board it is, it only needs an MJPEG stream and a few control endpoints. See the [firmware API](firmware.md#http-api).
 

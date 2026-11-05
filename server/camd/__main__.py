@@ -5,7 +5,7 @@ import uvicorn
 
 from . import __version__
 from .app import create_app
-from .config import load
+from .config import load_all
 
 SHUTDOWN_GRACE_S = 5
 
@@ -15,9 +15,9 @@ def main() -> None:
     parser.add_argument("--version", action="version", version=f"camd {__version__}")
     parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    cfg = load()
+    cfg, *extras = load_all()
     uvicorn.run(
-        create_app(cfg),
+        create_app(cfg, extras=extras),
         host=cfg.listen_host,
         port=cfg.listen_port,
         access_log=False,
