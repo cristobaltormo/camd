@@ -27,15 +27,22 @@ export async function launch({ port, width = 1280, height = 900, extraArgs = [] 
   chrome.on("exit", (code) => { exited = code; });
 
   let target;
+  let lastError = "";
   for (let i = 0; i < 160 && !target; i++) {
     if (exited !== null) throw new Error(`browser exited with ${exited}\n${stderr}`);
     try {
       const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
       target = list.find((item) => item.type === "page")?.webSocketDebuggerUrl;
-    } catch (_) {}
+      if (!target && i >= 8 && i % 8 === 0) {
+        const created = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: "PUT" })).json();
+        target = created.webSocketDebuggerUrl;
+      }
+    } catch (error) {
+      lastError = String(error);
+    }
     if (!target) await sleep(250);
   }
-  if (!target) throw new Error(`browser did not start\n${stderr}`);
+  if (!target) throw new Error(`browser did not start (${lastError})\n${stderr}`);
 
   const ws = new WebSocket(target);
   await new Promise((resolve, reject) => { ws.addEventListener("open", resolve); ws.addEventListener("error", () => reject(new Error("devtools connection failed"))); });
