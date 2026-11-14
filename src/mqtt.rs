@@ -751,16 +751,18 @@ mod tests {
         fn start(binary: &str, dir: &std::path::Path, port: u16) -> Broker {
             let log_path = dir.join(format!("mosquitto-{port}.log"));
             let log = std::fs::File::create(&log_path).unwrap();
-            let child = std::process::Command::new(binary)
-                .arg("-p")
-                .arg(port.to_string())
-                .stdout(log.try_clone().unwrap())
-                .stderr(log)
-                .spawn()
-                .unwrap();
+            let broker = Broker(
+                std::process::Command::new(binary)
+                    .arg("-p")
+                    .arg(port.to_string())
+                    .stdout(log.try_clone().unwrap())
+                    .stderr(log)
+                    .spawn()
+                    .unwrap(),
+            );
             for _ in 0..200 {
                 if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
-                    return Broker(child);
+                    return broker;
                 }
                 std::thread::sleep(Duration::from_millis(50));
             }
