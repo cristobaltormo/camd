@@ -10,7 +10,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     cargo build --release --locked \
  && cp target/release/camd /camd
 
-FROM alpine:3.22 AS runtime
+FROM alpine:3.24 AS runtime
 RUN apk add --no-cache ffmpeg iputils-ping iputils-arping ca-certificates tzdata libcap-setcap \
  && setcap cap_net_raw+ep "$(command -v arping)" \
  && setcap cap_net_raw+ep "$(command -v ping)" \
