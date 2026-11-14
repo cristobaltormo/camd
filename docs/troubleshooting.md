@@ -16,6 +16,10 @@ Start with the log: `journalctl -u camd -n 100` or `docker compose logs --tail 1
 
 ## The server
 
+**It does not start.** `journalctl -u camd -n 50` shows why. A line that names a configuration key means the TOML file has a typo or a value of the wrong type, for example `retention_days = "14"` where a number is expected; 2.x accepted such values silently, 3.0 refuses them.
+
+**"Permission denied" or "readonly database" after a `camd ctl` command.** It was run as root, and the database or its journal now belongs to root. Run `sudo chown -R camd:camd /var/lib/camd`, and next time run it as the service user: `sudo -u camd CAMD_CONFIG=/etc/camd/config.toml camd ctl ...`.
+
 **"Camera has no signal".** The server cannot reach the camera. Check `camera_host`, that the token matches, and that the camera answers: `curl -H "Authorization: Bearer TOKEN" http://CAMERA/status`. From Docker, `.local` names do not resolve: use the IP address and reserve it in your router.
 
 **The app asks me to sign in again at every visit.** Cookies are `Secure` behind HTTPS and `SameSite=Strict`. Make sure `origin` is exactly the address you type, including the scheme and port, and that `secure_cookies` matches how you reach it.
@@ -24,7 +28,7 @@ Start with the log: `journalctl -u camd -n 100` or `docker compose logs --tail 1
 
 **Writes fail with "bad origin".** The `Origin` header must match `origin` or the host you reached the server through. Behind a proxy set `trust_proxy = true` and pass `Host` and `X-Forwarded-For`.
 
-**Detection never turns green.** Look in **Settings, Detection**. The first run downloads a 3.8 MB model; on a machine without internet copy `nanodet-plus-m.onnx` into `<data_dir>/models/` (see [install](install.md)). Until the detector is ready every motion is recorded and alerted, so nothing is lost.
+**Detection never turns green.** Look in **Settings, Detection**. The first run downloads a 3.8 MB model; on a machine without internet copy the model into `<data_dir>/models/nanodet-plus-m.onnx` yourself (see [install](install.md#first-start)). Until the detector is ready every motion is recorded and alerted, so nothing is lost.
 
 **It does not see a person that is clearly there.** Lower **Minimum confidence** a little and add light. The detector needs to see the shape; a silhouette against a window is hard.
 
@@ -32,9 +36,11 @@ Start with the log: `journalctl -u camd -n 100` or `docker compose logs --tail 1
 
 **CPU is high.** Lower the resolution, and check that detection is not set to run on a busy scene all day: a TV that is always on counts as motion. Ignored zones fix that.
 
-**Clips are not saved ("Could not be saved").** FFmpeg failed or the disk is full. The log has the reason. Free space or lower the retention.
+**Clips are not saved ("Could not be saved").** FFmpeg failed, is not installed (the log says `ffmpeg is not installed`), or the disk is full. The log has the reason. Free space or lower the retention.
 
-**Auto mode never records when I am away.** Presence needs the IP address of your phone in `presence_devices`, with a fixed address reserved in the router. Phones sleep their wifi; there is a grace period (`presence_grace_s`) before the phone counts as away.
+**The installer stops with "checksum does not match".** The download was cut or altered. Run it again; if it keeps failing, download the binary and `SHA256SUMS` by hand from the release page and compare.
+
+**Auto mode never records when I am away.** Presence needs the IP address of your phone in `presence_devices`, with a fixed address reserved in the router. Phones sleep their wifi; there is a grace period (`presence_grace_s`) before the phone counts as away. In Docker, `arping` only sees the container's own network: use `network_mode: host` if `ping` alone is not reliable for your phone.
 
 ## The app
 

@@ -40,4 +40,4 @@ WireGuard or Tailscale to your home network and the plain address. Passkeys are 
 | `origin` | exactly what the browser shows, scheme and port included |
 | `rp_id` | the host name only, no scheme, no port |
 | `secure_cookies` | `true` over HTTPS |
-| `trust_proxy` | `true` exactly when a proxy is in front: the last `X-Forwarded-For` entry is then taken as the client address for rate limiting. Left `false` behind a proxy, all visitors share one limit; set `true` with no proxy, a client could forge its address |
+| `trust_proxy` | `true` exactly when a proxy is in front: the last `X-Forwarded-For` entry is then taken as the client address for rate limiting. Left `false` behind a proxy on another machine, all visitors share one limit (a proxy on `127.0.0.1` is still read, the way 2.x did); set `true` with no proxy, a client could forge its address |

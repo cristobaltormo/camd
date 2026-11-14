@@ -4,4 +4,4 @@ If you find a vulnerability, please do not open a public issue. Use GitHub's pri
 
 Supported: the latest release. The threat model and what is already protected are in [docs/security.md](docs/security.md).
 
-In scope: authentication and sessions, access to video and stored media, the camera protocol, the installer and the container image. Out of scope: problems that need an attacker with root on the server, and deployments that expose the app to the internet without HTTPS.
+In scope: authentication and sessions, access to video and stored media, the camera protocol, the release binaries and their checksums, the installer and the container image. Out of scope: problems that need an attacker with root on the server, and deployments that expose the app to the internet without HTTPS.

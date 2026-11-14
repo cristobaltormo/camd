@@ -19,4 +19,4 @@ Instead of pinging phones you can tell camd who is home: publish `home` or `away
 
 ## Several cameras
 
-Run one camd per camera and give each its own `mqtt_topic` (`camd/kitchen`, `camd/garage`).
+With `[[cameras]]` tables (see [several cameras](configuration.md#several-cameras)) each extra camera publishes under its own prefix, `<mqtt_topic>_<id>` unless its table sets `mqtt_topic`, and appears in Home Assistant as a device of its own with the same entities.

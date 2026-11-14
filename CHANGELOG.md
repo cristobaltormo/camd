@@ -1,5 +1,80 @@
 # Changelog
 
+## 3.0.0
+
+The server is rewritten in Rust. It does the same job with the same configuration, the same data directory and the same HTTP API, so upgrading is replacing the program, and going back to 2.2 is replacing it again. What changes is what it costs to run: camd is now one static binary of about 29 MB with the web app inside, with no Python, OpenCV or OpenSSL to install. It needs only FFmpeg for clips and, for presence, `ping` and `arping`.
+
+Measured on the same machine (a 2 vCPU Debian 13 container) with the same 800x600 stream at 10 fps, 3.0 against 2.2:
+
+- CPU in a quiet room: 4.0 % of one core against 9.3 %; with continuous motion, detection and clips: 11.1 % against 17.6 %; motion analysis takes 3.7 ms per frame against 9.1 ms, with the same reduced JPEG decode and the same Gaussian blur as OpenCV, bit for bit;
+- memory with the detector loaded: 36.8 MB against 131.3 MB; 13.6 MB after a fresh start, before the detector is first needed;
+- memory after 10 minutes of continuous motion: 40.2 MB and flat, against 157.9 MB;
+- one inference: about 27 ms against 33 ms;
+- 7 threads against 13; answering HTTP 35 ms after start against 923 ms; stopping with a viewer connected takes 0.03 s against 5.2 s.
+
+What stays the same:
+
+- Every configuration key, default and `CAMD_*` variable, `CAMD_CONFIG`, and `[[cameras]]` tables.
+- The data directory: `camd.sqlite3` with the same schema, `clips/`, `photos/`, `models/`, the spool files and `vapid_private.pem`. 2.2 opens a database written by 3.0.
+- Passkeys, the password, sessions and cookies, enrollment codes and push subscriptions: nobody has to sign in or subscribe again.
+- Every HTTP path, status code and JSON field, the origin checks and `trust_proxy`, MQTT topics and Home Assistant discovery, the Notifich, ntfy and Web Push payloads and the alert texts in English and Spanish.
+- The pipeline: motion with brightness compensation, NanoDet-Plus-m on frames with motion at the same cadence and thresholds (the same file, now run with tract instead of OpenCV, giving the same boxes), the three detection modes, alert zones, pre-roll, the on-disk spool, one FFmpeg at a time with the same arguments, retention, arming by presence, snooze and privacy.
+- `camd-ctl` becomes `camd ctl` (`password`, `enroll`, `devices`, `revoke-all`); the installer adds a `camd-ctl` link so old scripts keep working.
+
+Fixes and deliberate changes:
+
+- A value of the wrong type in the TOML file (`retention_days = "14"`) stops the server with a message naming the key; 2.2 accepted it silently. A `[[cameras]]` entry whose `id` is not a string, or that sets `camera_id`, is rejected.
+- Events recovered after a crash keep the objects that were seen. 2.2 cleared them, so an event with a person was shown as "No object" and deleted after 24 hours.
+- The detection model is dropped from memory when detection is turned off and loaded again when it is turned on.
+- Turning the camera off, privacy, standby and stopping the server close the stream connection at once.
+- If the spool file of a new event cannot be created, the event is removed instead of staying "recording" forever.
+- A damaged JPEG from the camera is dropped and never stops a thread; header lines from the camera are limited in length; FFmpeg's error output is read while it runs and its timeout really applies.
+- Snoozing takes effect at once instead of after up to a second.
+- Each database migration step runs in one transaction. JSON stored in the database is written compactly (2.2 reads it).
+- The build id shown in Settings, System is always a hash of the interface files; 2.2 said "dev" when it was not packaged.
+- HTTP: request bodies are limited to 256 KiB (`413` above); `HEAD` is answered on every `GET` route instead of `405`; registering the same passkey twice or sending a push subscription with a malformed endpoint answers `400` instead of `500`; static files carry an `ETag` tied to the build and answer `304`, without `Last-Modified`; a request for several byte ranges gets the whole file.
+- Passkeys are verified by a small built-in verifier that accepts `none` and `packed` attestation with ES256, EdDSA or RS256 keys. camd asks browsers for `none` attestation, as 2.2 did, so this covers the passkeys browsers create.
+- MQTT over TLS checks the broker against the system certificates, with a bundled set as fallback.
+- The `event N failed` log line ends with the reason instead of a traceback.
+- Privacy holds even when the camera is unreachable at start. In 2.2, if privacy was on and the camera came up after the server (after a power cut, for example), the status said privacy while the live view and snapshots showed the room. Now the server marks the camera as in standby, does not stream, and puts it back in standby when it appears; live view, snapshots, photos and manual clips are refused while privacy is on, whatever the camera reports. A frame already in flight when privacy turns on can no longer open an event.
+- Stopping the server closes and saves the open event first and waits at most 3 s for the other threads, so a stalled model download or a slow alert no longer delays shutdown.
+- A manual clip that cannot start answers `500`, as in 2.2.
+- With `trust_proxy = false` and a proxy on the same machine (`127.0.0.1`), the client address is taken from `X-Forwarded-For` as 2.2 did, so login limits stay per visitor.
+- `/api/settings` returns whole numbers for settings written as whole numbers in the TOML file until they are changed, as 2.2 did.
+- Hardening: images larger than 2592x2592 are refused before decoding; at most 2 password checks run at once and at most 60 attempts per minute are accepted across all clients (`429` above); at most 1024 passkey challenges are pending; request headers must arrive within 10 s and at most 256 connections are open; the rate limiter tracks at most 4096 addresses; Web Push never follows redirects and refuses endpoints whose name resolves to a private or loopback address; FFmpeg is fed from its own thread so its timeout covers the whole encode; corrupt spool files end instead of allocating; camera headers are limited to 100 lines; `camd ctl devices | head` no longer fails on the closed pipe.
+
+The interface is redesigned. The live page puts the camera name and one status line above the picture, and the day's timeline and the latest events beside it; frame rate, signal and detector time sit quietly under the video. The sidebar shows the camera name, or the camera selector when there are several, with the same status wording as the page. Screenshots in the README are taken from the real server and a fake camera.
+
+Packaging:
+
+- Release files: `camd-linux-amd64` and `camd-linux-arm64` (static, musl), the firmware image, `install.sh`, `camd.service`, `config.example.toml` and `SHA256SUMS`.
+- `install.sh` downloads the binary for the machine, checks it against `SHA256SUMS`, and installs or upgrades in place, backing up the unit, `/etc/camd` and the database first.
+- The systemd unit runs `/usr/local/bin/camd` with the same hardening plus a 512 MB memory cap, `CAP_NET_RAW` for `arping` and a narrower set of address families.
+- The Docker image is Alpine with FFmpeg, `ping`, `arping` and time zone data, built from the release binaries, for `linux/amd64` and `linux/arm64`, with the same `camd` user id as before. `docker-compose.yml` now pulls `ghcr.io/cristobaltormo/camd:3` instead of building.
+- CI runs `cargo fmt`, `cargo clippy -D warnings`, `cargo test` with FFmpeg, `cargo audit`, the interface tests, and the browser tests against the real binary and a fake camera.
+
+### Upgrading from 2.x
+
+With the installer, run it again; it detects the Python install and keeps it:
+
+```sh
+curl -fsSL https://github.com/cristobaltormo/camd/releases/latest/download/install.sh | sudo bash
+```
+
+It stops the service, copies the unit, `/etc/camd`, the database and the push key to `/var/backups/camd/<date>-before-3.0.0/`, installs `/usr/local/bin/camd` and the new unit, and starts it again. `/etc/camd/config.toml`, `/etc/camd/env` and `/var/lib/camd` are used as they are. With Docker: `docker compose pull && docker compose up -d` (if your compose file still has `build: .`, replace it with `image: ghcr.io/cristobaltormo/camd:3`). Before upgrading, check that no value in `config.toml` has the wrong type.
+
+### Going back to 2.2
+
+The installer leaves `/opt/camd/venv` in place. Restore the old unit and start it:
+
+```sh
+sudo systemctl stop camd
+sudo cp /var/backups/camd/<date>-before-3.0.0/camd.service /etc/systemd/system/camd.service
+sudo systemctl daemon-reload && sudo systemctl start camd
+```
+
+2.2 reads what 3.0 wrote, so events, photos and sign-ins made in between are kept. With Docker, set the image back to `ghcr.io/cristobaltormo/camd:2.2.0`.
+
 ## 2.2.0
 
 - Several cameras on one server: `[[cameras]]` tables in the configuration, one runtime and data directory each, a selector in the app, alerts that carry the camera name. See [configuration](docs/configuration.md#several-cameras).

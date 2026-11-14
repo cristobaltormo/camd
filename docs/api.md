@@ -1,6 +1,6 @@
 # HTTP API
 
-The app is a client of this API, and so can your scripts be. Every endpoint except `/healthz`, `/manifest.webmanifest` and the sign-in ones needs a session cookie. Writes must come from the configured origin. The OpenAPI schema is not exposed.
+The app is a client of this API, and so can your scripts be. Every endpoint except `/healthz`, `/manifest.webmanifest` and the sign-in ones needs a session cookie. Writes must come from the configured origin or the host the request was sent to. Request bodies are JSON and at most 256 KiB (larger ones get `413`). `HEAD` works on every `GET` route. Clips and images answer single `Range` requests with `206`; a request for several ranges gets the whole file. There is no OpenAPI schema.
 
 ## Public
 

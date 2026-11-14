@@ -27,4 +27,4 @@ Resolution is set in **Settings, Camera**. 800x600 (SVGA) is the sweet spot; low
 
 ## The server
 
-Anything that runs Linux and stays on: a Raspberry Pi 4 or 5, a mini PC, a NAS with Docker, a Proxmox container. One camera uses about 120 to 150 MB of RAM and a few percent of a core (see [resources](../README.md#resources)), so the machine is more likely to be limited by disk than by CPU. Clip size depends on the scene; set the retention in days and the size cap in **Settings, Recording**.
+Anything that runs a 64-bit Linux (x86-64 or ARM64) and stays on: a Raspberry Pi 3, 4 or 5, a mini PC, a NAS with Docker, a Proxmox container. One camera uses about 40 MB of RAM with the detector loaded, plus FFmpeg while a clip is encoded, and a few percent of a core (see [resources](../README.md#resources)), so the machine is more likely to be limited by disk than by CPU. Clip size depends on the scene; set the retention in days and the size cap in **Settings, Recording**.

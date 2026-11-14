@@ -1,6 +1,6 @@
 # Configuration
 
-Settings come from three places, in this order: built-in defaults, the TOML file (`/etc/camd/config.toml`, or the path in `CAMD_CONFIG`), and environment variables named `CAMD_<KEY>` (lists are comma separated, booleans accept `true`, `1`, `yes`, `on`). Unknown keys in the file are an error, so typos do not go unnoticed.
+Settings come from three places, in this order: built-in defaults, the TOML file (`/etc/camd/config.toml`, or the path in `CAMD_CONFIG`), and environment variables named `CAMD_<KEY>` (lists are comma separated, booleans accept `true`, `1`, `yes`, `on`). Unknown keys in the file and values of the wrong type (`retention_days = "14"` instead of `14`) stop the server at start with a message that names the key, so typos do not go unnoticed. Integers are accepted where a decimal is expected.
 
 Keys marked `(live)` can also be changed from the app (Settings). A value saved there wins over both the file and the environment, survives restarts, and is the one in force from then on.
 

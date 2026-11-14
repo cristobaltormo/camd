@@ -4,7 +4,7 @@ Detection runs in two stages so that it stays cheap.
 
 ## 1. Motion
 
-Every frame is decoded at a quarter of its size in grayscale, blurred and compared with a slowly adapting background. Pixels that differ more than a threshold are grouped, and the largest group decides whether there is motion. Two things protect against false alarms at this stage:
+Every frame is decoded in grayscale at reduced size, blurred and compared with a slowly adapting background. Pixels that differ more than a threshold are grouped, and the largest group decides whether there is motion. Two things protect against false alarms at this stage:
 
 - a change of brightness that affects the whole image (the camera's auto exposure, a lamp turning on) is measured as the median difference and subtracted before comparing;
 - if more than half of the image changes at once, the background is simply restarted.
@@ -13,7 +13,7 @@ Motion needs three consecutive frames before an event starts. Zones you draw in 
 
 ## 2. Objects
 
-While there is motion (and every few seconds while an event is open), a frame is sent to a small neural network. NanoDet-Plus-m comes from the [OpenCV Zoo](https://github.com/opencv/opencv_zoo), is 3.8 MB, and runs through OpenCV's own inference engine, so there is no extra runtime to install. The file is downloaded the first time it is needed and its SHA-256 is checked. It recognises the 80 COCO classes; you choose which ones count (default: person, cat, dog).
+While there is motion (and every few seconds while an event is open), a frame is sent to a small neural network. NanoDet-Plus-m comes from the [OpenCV Zoo](https://github.com/opencv/opencv_zoo), is 3.8 MB, and runs inside the server with [tract](https://github.com/sonos/tract), a pure Rust inference engine, so there is no extra runtime to install. The model is loaded the first time it is needed and dropped from memory when detection is turned off. The file is downloaded the first time it is needed and its SHA-256 is checked. It recognises the 80 COCO classes; you choose which ones count (default: person, cat, dog).
 
 Only one frame is analysed at a time and frames that arrive meanwhile are skipped, so a slow machine falls behind gracefully instead of piling up work.
 
@@ -25,7 +25,7 @@ Only one frame is analysed at a time and frames that arrive meanwhile are skippe
 | `alert` (default) | any motion | only when an object is seen | clips without objects for `unconfirmed_keep_h` hours, shown apart as "No object" |
 | `strict` | only events with an object | only when an object is seen | nothing without an object: they are dropped before being encoded |
 
-If the model cannot be loaded (no internet on first start, for example) the server behaves as `off` until it is available, so nothing is missed.
+If the model cannot be loaded (no internet on first start, for example) the server behaves as `off` until it is available, so nothing is missed. A damaged frame is skipped and never stops the pipeline.
 
 A person who sits still keeps the event open: the network is asked again every 2.5 seconds while an event lasts, and an object found postpones the end of the clip.
 
