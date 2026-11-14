@@ -6,11 +6,60 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update && sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends ffmpeg
+        timeout-minutes: 8
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: make lint rust-test
+
+  binaries:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-amd64, target: x86_64-unknown-linux-musl }
+          - { platform: linux-arm64, target: aarch64-unknown-linux-musl }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.1
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+      - run: make platform PLATFORM=${{ matrix.platform }}
+      - if: matrix.platform == 'linux-amd64'
+        run: |
+          file dist/camd-linux-amd64
+          dist/camd-linux-amd64 --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: camd-${{ matrix.platform }}
+          path: dist/camd-${{ matrix.platform }}
+          if-no-files-found: error
+
   firmware:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
@@ -19,16 +68,11 @@ jobs:
       - run: pip install platformio esptool
       - run: pio run -d firmware
       - run: firmware/tools/merge.sh
-      - id: notes
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          awk -v v="$version" '$0 ~ "^## " v "$" {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
-      - uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+      - uses: actions/upload-artifact@v4
         with:
-          files: firmware/camd-esp32cam.bin
-          body_path: notes.md
+          name: firmware
+          path: firmware/camd-esp32cam.bin
+          if-no-files-found: error
       - run: |
           mkdir site
           cp firmware/camd-esp32cam.bin site/
@@ -38,6 +82,43 @@ jobs:
         if: ${{ !github.event.repository.private }}
         with:
           path: site
+
+  release:
+    needs: [binaries, firmware]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - run: |
+          cp deploy/install.sh deploy/camd.service deploy/config.example.toml dist/
+          cd dist
+          chmod 0755 camd-linux-* install.sh
+          sha256sum camd-* install.sh camd.service config.example.toml > SHA256SUMS
+          cat SHA256SUMS
+      - run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '$0 ~ "^## " v "$" {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
+          test -s notes.md
+      - run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes-file notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  image:
+    needs: release
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker.yml
+    with:
+      tag: ${{ github.ref_name }}
+      push: true
 
   pages:
     needs: firmware

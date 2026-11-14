@@ -1,7 +1,6 @@
 services:
   camd:
-    build: .
-    image: camd:latest
+    image: ghcr.io/cristobaltormo/camd:3
     restart: unless-stopped
     ports:
       - "8180:8180"

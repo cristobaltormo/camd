@@ -26,7 +26,7 @@ body:
     id: version
     attributes:
       label: camd version
-      description: Shown in Settings, System, or by `camd-ctl version`.
+      description: Shown in Settings, System, or by `camd --version`.
     validations:
       required: true
   - type: input
@@ -38,7 +38,7 @@ body:
     id: install
     attributes:
       label: How it runs
-      options: [Docker, install.sh on Debian or Ubuntu, From source, Other]
+      options: [Docker, install.sh, Release binary by hand, From source, Other]
   - type: textarea
     id: logs
     attributes:

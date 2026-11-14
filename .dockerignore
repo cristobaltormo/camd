@@ -1,9 +1,13 @@
 .git
+.github
 .claude
-.venv
+.ruff_cache
+target
+server
 firmware
 docs
+tools
+tests
+examples
 **/__pycache__
-**/.pytest_cache
-server/tests
-server/webtests
+**/node_modules

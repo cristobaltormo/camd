@@ -2,8 +2,7 @@
 
 ## Checklist
 
-- [ ] `ruff check . && ruff format --check . && mypy camd && pytest -q --cov` pass in `server/`
-- [ ] `node --test` passes if the interface changed
+- [ ] `make test` passes (`cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, `node --test` in `tests/web`)
 - [ ] `pio run` passes if the firmware changed
 - [ ] New behaviour has a test
 - [ ] Documentation and `CHANGELOG.md` are updated
