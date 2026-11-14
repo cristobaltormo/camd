@@ -231,7 +231,7 @@ pub fn parse_auth_data(bytes: &[u8]) -> std::result::Result<AuthData, String> {
 pub enum PublicKey {
     Es256(p256::ecdsa::VerifyingKey),
     Ed25519(ed25519_dalek::VerifyingKey),
-    Rs256(rsa::RsaPublicKey),
+    Rs256(rsa::PublicKey),
 }
 
 fn cose_get(map: &[(Cbor, Cbor)], key: i64) -> Option<&Cbor> {
@@ -271,12 +271,11 @@ impl PublicKey {
                 if x.len() != 32 || y.len() != 32 {
                     return Err("EC2 key coordinates have the wrong length".into());
                 }
-                let point = p256::EncodedPoint::from_affine_coordinates(
-                    p256::FieldBytes::from_slice(x),
-                    p256::FieldBytes::from_slice(y),
-                    false,
-                );
-                let key = p256::ecdsa::VerifyingKey::from_encoded_point(&point)
+                let mut point = Vec::with_capacity(65);
+                point.push(4);
+                point.extend_from_slice(x);
+                point.extend_from_slice(y);
+                let key = p256::ecdsa::VerifyingKey::from_sec1_bytes(&point)
                     .map_err(|_| "EC2 key is not a point on P-256")?;
                 PublicKey::Es256(key)
             }
@@ -295,9 +294,9 @@ impl PublicKey {
             (3, -257) => {
                 let n = cose_bytes(map, -1).ok_or("RSA key missing n")?;
                 let e = cose_bytes(map, -2).ok_or("RSA key missing e")?;
-                let key = rsa::RsaPublicKey::new(
-                    rsa::BigUint::from_bytes_be(n),
-                    rsa::BigUint::from_bytes_be(e),
+                let key = rsa::PublicKey::new(
+                    rsa::BoxedUint::from_be_slice_vartime(n),
+                    rsa::BoxedUint::from_be_slice_vartime(e),
                 )
                 .map_err(|e| format!("Invalid RSA key: {e}"))?;
                 PublicKey::Rs256(key)
@@ -599,7 +598,7 @@ pub mod soft {
     }
 
     pub fn cose_es256(key: &p256::ecdsa::VerifyingKey) -> Vec<u8> {
-        let point = key.to_encoded_point(false);
+        let point = key.to_sec1_point(false);
         cbor(&Cbor::Map(vec![
             (Cbor::from(1), Cbor::from(2)),
             (Cbor::from(3), Cbor::from(-7)),
@@ -960,15 +959,15 @@ mod tests {
         assert!(!key.verify(b"hellp", &sig.to_bytes()));
 
         use rsa::traits::PublicKeyParts;
-        let private = rsa::RsaPrivateKey::new(&mut RandomRng, 1024).unwrap();
+        let private = rsa::PrivateKey::new(&mut getrandom::SysRng, 1024).unwrap();
         let public = private.to_public_key();
         let mut out = Vec::new();
         ciborium::ser::into_writer(
             &Cbor::Map(vec![
                 (Cbor::from(1), Cbor::from(3)),
                 (Cbor::from(3), Cbor::from(-257)),
-                (Cbor::from(-1), Cbor::Bytes(public.n().to_bytes_be())),
-                (Cbor::from(-2), Cbor::Bytes(public.e().to_bytes_be())),
+                (Cbor::from(-1), Cbor::Bytes(public.n_bytes().to_vec())),
+                (Cbor::from(-2), Cbor::Bytes(public.e_bytes().to_vec())),
             ]),
             &mut out,
         )
@@ -986,29 +985,6 @@ mod tests {
         assert!(PublicKey::from_cose(b"\xa1\x01\x04").is_err());
         assert!(PublicKey::from_cose(b"").is_err());
     }
-
-    struct RandomRng;
-
-    impl rsa::rand_core::RngCore for RandomRng {
-        fn next_u32(&mut self) -> u32 {
-            u32::from_le_bytes(random_bytes::<4>())
-        }
-        fn next_u64(&mut self) -> u64 {
-            u64::from_le_bytes(random_bytes::<8>())
-        }
-        fn fill_bytes(&mut self, dest: &mut [u8]) {
-            getrandom::fill(dest).unwrap();
-        }
-        fn try_fill_bytes(
-            &mut self,
-            dest: &mut [u8],
-        ) -> std::result::Result<(), rsa::rand_core::Error> {
-            self.fill_bytes(dest);
-            Ok(())
-        }
-    }
-
-    impl rsa::rand_core::CryptoRng for RandomRng {}
 
     #[test]
     fn auth_data_parser_survives_garbage() {

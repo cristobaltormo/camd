@@ -1,18 +1,19 @@
+mod codec;
+mod session;
+
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use rumqttc::{
-    Client, ConnectReturnCode, ConnectionError, Event, LastWill, MqttOptions, Outgoing, Packet,
-    QoS, TlsConfiguration, Transport,
-};
 use serde_json::{Map, Value, json};
+use tokio::sync::{Notify, mpsc};
 
 use crate::api::pyjson;
 use crate::config::Config;
 use crate::error::Result;
+
+use session::{Failure, Request, Session, Settings};
 
 pub const DISCOVERY_PREFIX: &str = "homeassistant";
 pub const KEEPALIVE_S: u64 = 30;
@@ -40,9 +41,10 @@ pub enum Action {
 #[derive(Default)]
 struct Shared {
     last: Mutex<HashMap<String, String>>,
-    client: Mutex<Option<Client>>,
+    requests: Mutex<Option<mpsc::Sender<Request>>>,
     stopping: AtomicBool,
-    done: Mutex<Option<mpsc::Receiver<()>>>,
+    wake: Notify,
+    done: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
 }
 
 pub struct Mqtt {
@@ -178,28 +180,33 @@ impl Mqtt {
         }
     }
 
-    pub fn options(&self) -> std::result::Result<MqttOptions, String> {
+    pub fn settings(&self) -> std::result::Result<Settings, String> {
         let port =
             u16::try_from(self.cfg.mqtt_port).map_err(|_| "invalid mqtt_port".to_string())?;
-        let mut options =
-            MqttOptions::new(format!("camd-{}", self.topic), &self.cfg.mqtt_host, port);
-        options.set_keep_alive(Duration::from_secs(KEEPALIVE_S));
-        if !self.cfg.mqtt_user.is_empty() {
-            options.set_credentials(&self.cfg.mqtt_user, &self.cfg.mqtt_password);
-        }
-        options.set_last_will(LastWill::new(
-            format!("{}/status", self.topic),
-            "offline",
-            QoS::AtMostOnce,
-            true,
-        ));
-        if self.cfg.mqtt_tls {
-            let tls = tls_config().map_err(|e| e.to_string())?;
-            options.set_transport(Transport::tls_with_config(TlsConfiguration::Rustls(
-                Arc::new(tls),
-            )));
-        }
-        Ok(options)
+        let tls = if self.cfg.mqtt_tls {
+            Some(Arc::new(tls_config().map_err(|e| e.to_string())?))
+        } else {
+            None
+        };
+        let user = &self.cfg.mqtt_user;
+        let password = &self.cfg.mqtt_password;
+        Ok(Settings {
+            host: self.cfg.mqtt_host.clone(),
+            port,
+            keep_alive: Duration::from_secs(KEEPALIVE_S),
+            connect: codec::Connect {
+                client_id: format!("camd-{}", self.topic),
+                keep_alive: KEEPALIVE_S as u16,
+                username: (!user.is_empty()).then(|| user.clone()),
+                password: (!user.is_empty() && !password.is_empty()).then(|| password.clone()),
+                will: Some(codec::Will {
+                    topic: format!("{}/status", self.topic),
+                    payload: b"offline".to_vec(),
+                    retain: true,
+                }),
+            },
+            tls,
+        })
     }
 
     pub fn connected_actions(&self) -> Vec<Action> {
@@ -223,16 +230,20 @@ impl Mqtt {
         if !self.enabled {
             return;
         }
-        let options = match self.options() {
-            Ok(options) => options,
+        let settings = match self.settings() {
+            Ok(settings) => settings,
             Err(e) => {
                 crate::warning!("camd.mqtt", "mqtt unavailable: {}", e);
                 return;
             }
         };
-        let (client, connection) = Client::new(options, QUEUE);
-        *self.shared.client.lock().unwrap_or_else(|e| e.into_inner()) = Some(client.clone());
-        let (done_tx, done_rx) = mpsc::channel();
+        let (requests_tx, requests) = mpsc::channel(QUEUE);
+        *self
+            .shared
+            .requests
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(requests_tx);
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
         *self.shared.done.lock().unwrap_or_else(|e| e.into_inner()) = Some(done_rx);
         let worker = Mqtt {
             topic: self.topic.clone(),
@@ -243,7 +254,13 @@ impl Mqtt {
         let spawned = std::thread::Builder::new()
             .name("mqtt".into())
             .spawn(move || {
-                worker.run(client, connection, &commands);
+                match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(runtime) => runtime.block_on(worker.run(settings, requests, &commands)),
+                    Err(e) => crate::warning!("camd.mqtt", "mqtt unavailable: {}", e),
+                }
                 let _ = done_tx.send(());
             });
         if let Err(e) = spawned {
@@ -251,61 +268,71 @@ impl Mqtt {
         }
     }
 
-    fn pause(&self) {
-        for _ in 0..RETRY_S * 10 {
-            if self.shared.stopping.load(Ordering::Relaxed) {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(100));
-        }
-    }
-
-    fn run(&self, client: Client, mut connection: rumqttc::Connection, commands: &Commands) {
+    async fn run(
+        &self,
+        settings: Settings,
+        mut requests: mpsc::Receiver<Request>,
+        commands: &Commands,
+    ) {
         let mut reported = false;
-        for notification in connection.iter() {
-            let stopping = self.shared.stopping.load(Ordering::Relaxed);
-            match notification {
-                Ok(Event::Incoming(Packet::ConnAck(ack))) => {
-                    if ack.code != ConnectReturnCode::Success {
-                        crate::warning!("camd.mqtt", "mqtt connect refused: {:?}", ack.code);
-                        continue;
-                    }
+        loop {
+            let failure = match Session::open(&settings).await {
+                Ok(mut session) => {
                     reported = false;
                     self.shared
                         .last
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
                         .clear();
-                    for action in self.connected_actions() {
-                        let _ = match action {
-                            Action::Subscribe(topic) => {
-                                client.try_subscribe(topic, QoS::AtMostOnce)
-                            }
-                            Action::Publish(topic, payload) => {
-                                client.try_publish(topic, QoS::AtMostOnce, true, payload)
-                            }
-                        };
+                    match self.serve(&mut session, &mut requests, commands).await {
+                        Ok(()) => {
+                            session.disconnect().await;
+                            return;
+                        }
+                        Err(failure) => failure,
                     }
                 }
-                Ok(Event::Incoming(Packet::Publish(message))) => {
-                    self.handle_command(&message.topic, &message.payload, commands);
-                }
-                Ok(Event::Outgoing(Outgoing::Disconnect)) if stopping => return,
-                Ok(_) => {}
-                Err(_) if stopping => return,
-                Err(ConnectionError::ConnectionRefused(code)) => {
+                Err(failure) => failure,
+            };
+            if self.shared.stopping.load(Ordering::Relaxed) {
+                return;
+            }
+            match failure {
+                Failure::Refused(code) => {
                     crate::warning!("camd.mqtt", "mqtt connect refused: {:?}", code);
-                    self.pause();
                 }
-                Err(e) => {
-                    if !reported {
-                        crate::warning!("camd.mqtt", "mqtt unavailable: {}", e);
-                        reported = true;
-                    }
-                    self.pause();
+                other if !reported => {
+                    crate::warning!("camd.mqtt", "mqtt unavailable: {}", other);
+                    reported = true;
+                }
+                _ => {}
+            }
+            tokio::select! {
+                () = tokio::time::sleep(Duration::from_secs(RETRY_S)) => {}
+                () = self.shared.wake.notified() => return,
+            }
+        }
+    }
+
+    async fn serve(
+        &self,
+        session: &mut Session,
+        requests: &mut mpsc::Receiver<Request>,
+        commands: &Commands,
+    ) -> std::result::Result<(), Failure> {
+        for action in self.connected_actions() {
+            match action {
+                Action::Subscribe(topic) => session.subscribe(&topic).await?,
+                Action::Publish(topic, payload) => {
+                    session.publish(&topic, payload.as_bytes()).await?;
                 }
             }
         }
+        session
+            .run(requests, &mut |topic, payload| {
+                self.handle_command(topic, payload, commands);
+            })
+            .await
     }
 
     pub fn publish(&self, suffix: &str, value: &str) {
@@ -319,19 +346,17 @@ impl Mqtt {
             }
             last.insert(suffix.to_string(), value.to_string());
         }
-        if let Some(client) = self
+        if let Some(requests) = self
             .shared
-            .client
+            .requests
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .as_ref()
         {
-            let _ = client.try_publish(
+            let _ = requests.try_send(Request::Publish(
                 format!("{}/{suffix}", self.topic),
-                QoS::AtMostOnce,
-                true,
                 value.as_bytes().to_vec(),
-            );
+            ));
         }
     }
 
@@ -350,15 +375,16 @@ impl Mqtt {
         }
         self.publish("status", "offline");
         self.shared.stopping.store(true, Ordering::Relaxed);
-        if let Some(client) = self
+        if let Some(requests) = self
             .shared
-            .client
+            .requests
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .take()
         {
-            let _ = client.try_disconnect();
+            let _ = requests.try_send(Request::Disconnect);
         }
+        self.shared.wake.notify_one();
         if let Some(done) = self
             .shared
             .done
@@ -491,6 +517,44 @@ mod tests {
     }
 
     #[test]
+    fn settings_follow_the_config() {
+        let plain = Mqtt::new(&config("cam")).settings().unwrap();
+        assert_eq!(plain.port, 1883);
+        assert!(plain.tls.is_none());
+        assert_eq!(
+            plain.connect,
+            codec::Connect {
+                client_id: "camd-cam".into(),
+                keep_alive: 30,
+                username: None,
+                password: None,
+                will: Some(codec::Will {
+                    topic: "cam/status".into(),
+                    payload: b"offline".to_vec(),
+                    retain: true,
+                }),
+            }
+        );
+        let secure = Mqtt::new(&Config {
+            mqtt_user: "u".into(),
+            mqtt_password: "p".into(),
+            mqtt_tls: true,
+            mqtt_port: 8883,
+            ..config("cam")
+        })
+        .settings()
+        .unwrap();
+        assert!(secure.tls.is_some());
+        assert_eq!(secure.connect.username.as_deref(), Some("u"));
+        assert_eq!(secure.connect.password.as_deref(), Some("p"));
+        let bad_port = Mqtt::new(&Config {
+            mqtt_port: 70_000,
+            ..config("cam")
+        });
+        assert!(bad_port.settings().is_err());
+    }
+
+    #[test]
     fn without_a_broker_it_is_inert() {
         let (commands, _) = recorder();
         let mqtt = Mqtt::new(&Config::default());
@@ -578,7 +642,7 @@ mod tests {
     fn talks_to_a_real_broker_socket() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             stream
@@ -669,5 +733,159 @@ mod tests {
             rx.recv_timeout(Duration::from_secs(5)).unwrap(),
             "disconnect"
         );
+    }
+
+    fn mosquitto() -> Option<String> {
+        let candidates = [
+            std::env::var("CAMD_MOSQUITTO").unwrap_or_default(),
+            "/usr/sbin/mosquitto".to_string(),
+        ];
+        candidates
+            .into_iter()
+            .find(|path| !path.is_empty() && std::path::Path::new(path).is_file())
+    }
+
+    struct Broker(std::process::Child);
+
+    impl Broker {
+        fn start(binary: &str, dir: &std::path::Path, port: u16) -> Broker {
+            let conf = dir.join("mosquitto.conf");
+            std::fs::write(
+                &conf,
+                format!("listener {port} 127.0.0.1\nallow_anonymous true\npersistence false\n"),
+            )
+            .unwrap();
+            let child = std::process::Command::new(binary)
+                .arg("-c")
+                .arg(&conf)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .unwrap();
+            for _ in 0..100 {
+                if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Broker(child)
+        }
+    }
+
+    impl Drop for Broker {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    struct Observer {
+        stream: std::net::TcpStream,
+        buffer: Vec<u8>,
+    }
+
+    impl Observer {
+        fn connect(port: u16, filter: &str) -> Observer {
+            let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            let hello = codec::Connect {
+                client_id: "observer".into(),
+                keep_alive: 60,
+                username: None,
+                password: None,
+                will: None,
+            };
+            stream.write_all(&codec::connect(&hello).unwrap()).unwrap();
+            stream
+                .write_all(&codec::subscribe(1, filter).unwrap())
+                .unwrap();
+            Observer {
+                stream,
+                buffer: Vec::new(),
+            }
+        }
+
+        fn next(&mut self) -> codec::Packet {
+            loop {
+                if let Some((packet, used)) = codec::decode(&self.buffer).unwrap() {
+                    self.buffer.drain(..used);
+                    return packet;
+                }
+                let mut chunk = [0u8; 4096];
+                let read = self.stream.read(&mut chunk).unwrap();
+                assert!(read > 0, "broker closed the observer");
+                self.buffer.extend_from_slice(&chunk[..read]);
+            }
+        }
+
+        fn wait_for(&mut self, topic: &str, payload: &str) -> bool {
+            loop {
+                if let codec::Packet::Publish {
+                    topic: t,
+                    payload: p,
+                    retain,
+                    ..
+                } = self.next()
+                    && t == topic
+                    && p == payload.as_bytes()
+                {
+                    return retain;
+                }
+            }
+        }
+
+        fn send(&mut self, topic: &str, payload: &str) {
+            self.stream
+                .write_all(&codec::publish(topic, payload.as_bytes(), false).unwrap())
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn works_with_mosquitto() {
+        let Some(binary) = mosquitto() else {
+            eprintln!("mosquitto not found, set CAMD_MOSQUITTO to run this test");
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let port = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let broker = Broker::start(&binary, dir.path(), port);
+        let mut observer = Observer::connect(port, "cam/#");
+        let (commands, seen) = recorder();
+        let mqtt = Mqtt::new(&Config {
+            mqtt_port: i64::from(port),
+            mqtt_host: "127.0.0.1".into(),
+            ..config("cam")
+        });
+        mqtt.start(commands);
+        observer.wait_for("cam/status", "online");
+        observer.send("cam/privacy/set", "ON");
+        for _ in 0..100 {
+            if !seen.lock().unwrap().is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(*seen.lock().unwrap(), ["privacy=true"]);
+        mqtt.publish("motion", "ON");
+        observer.wait_for("cam/motion", "ON");
+        let mut late = Observer::connect(port, "cam/motion");
+        assert!(late.wait_for("cam/motion", "ON"), "state is retained");
+        drop(late);
+
+        drop(observer);
+        drop(broker);
+        let broker = Broker::start(&binary, dir.path(), port);
+        let mut observer = Observer::connect(port, "cam/status");
+        observer.wait_for("cam/status", "online");
+        mqtt.stop();
+        observer.wait_for("cam/status", "offline");
+        drop(broker);
     }
 }

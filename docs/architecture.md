@@ -53,7 +53,7 @@ With several cameras the service builds one runtime per camera (own database, gr
 | `photos.rs` | stills and their thumbnails |
 | `arming.rs`, `presence.rs` | auto, armed and disarmed modes, snooze, privacy; phone presence by ping and ARP |
 | `viewers.rs` | live fan-out and per-viewer back-pressure |
-| `notify.rs`, `push.rs`, `mqtt.rs`, `messages.rs` | alert channels, Web Push encryption and VAPID, Home Assistant discovery, alert texts |
+| `notify.rs`, `push.rs`, `mqtt.rs` (`mqtt/`), `messages.rs` | alert channels, Web Push encryption and VAPID, Home Assistant discovery and the built-in MQTT 3.1.1 client, alert texts |
 | `auth/` | passkeys (WebAuthn), password (scrypt), sessions, rate limits |
 | `db/`, `storage.rs`, `prefs.rs` | SQLite schema and migrations, retention and size cap, settings saved from the app |
 | `config.rs` | defaults, the TOML file, `CAMD_*` variables, several cameras |

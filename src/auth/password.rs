@@ -9,8 +9,7 @@ pub const SALT_LEN: usize = 16;
 const DUMMY_SALT: [u8; SALT_LEN] = [0; SALT_LEN];
 
 fn derive(password: &str, salt: &[u8]) -> Vec<u8> {
-    let params =
-        Params::new(SCRYPT_LOG_N, SCRYPT_R, SCRYPT_P, SCRYPT_LEN).expect("valid scrypt parameters");
+    let params = Params::new(SCRYPT_LOG_N, SCRYPT_R, SCRYPT_P).expect("valid scrypt parameters");
     let mut out = vec![0u8; SCRYPT_LEN];
     scrypt::scrypt(password.as_bytes(), salt, &params, &mut out).expect("scrypt output length");
     out

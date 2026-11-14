@@ -127,7 +127,7 @@ pub fn encrypt_with(
     record.push(2);
     let cipher = Aes128Gcm::new_from_slice(&cek).expect("aes key length");
     let sealed = cipher
-        .encrypt(Nonce::from_slice(&nonce), record.as_slice())
+        .encrypt(&Nonce::from(nonce), record.as_slice())
         .map_err(|_| Error::internal("encryption failed"))?;
     let mut out = salt.to_vec();
     out.extend_from_slice(&RECORD_SIZE.to_be_bytes());
@@ -320,7 +320,7 @@ pub mod tests {
         hkdf(salt, &ikm, b"Content-Encoding: nonce\0", &mut nonce);
         let mut plain = Aes128Gcm::new_from_slice(&cek)
             .unwrap()
-            .decrypt(Nonce::from_slice(&nonce), &body[21 + id_len..])
+            .decrypt(&Nonce::from(nonce), &body[21 + id_len..])
             .unwrap();
         assert_eq!(plain.pop(), Some(2));
         plain

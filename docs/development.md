@@ -24,7 +24,7 @@ make run      # the server with deploy/config.example.toml and ./.data, on 127.0
 make build    # release build, copied to ./camd
 ```
 
-`cargo test` covers every module, the HTTP API against a fake runtime, a pipeline test that streams real JPEG frames through the grabber, motion detector and recorder and checks the clip FFmpeg produces, a test that runs the real binary against a fake camera, and compatibility tests that open a database written by the 2.x server and check that 2.x can read what 3.0 writes. The detector is faked in tests, so nothing needs the network.
+`cargo test` covers every module, the HTTP API against a fake runtime, a pipeline test that streams real JPEG frames through the grabber, motion detector and recorder and checks the clip FFmpeg produces, a test that runs the real binary against a fake camera, and compatibility tests that open a database written by the 2.x server and check that 2.x can read what 3.0 writes. The detector is faked in tests, so nothing needs the network. The MQTT client is also tested against a real Mosquitto broker when one is installed at `/usr/sbin/mosquitto` (or `CAMD_MOSQUITTO` points to the binary); without it that test is skipped.
 
 Run the tests in the dev profile. The release profile uses fat link-time optimisation: linking takes about 2 GB of memory, and `cargo test --release` can be killed for lack of memory on a machine with 3 GB.
 
