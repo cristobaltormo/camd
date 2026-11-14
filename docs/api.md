@@ -50,7 +50,7 @@ Sign-in endpoints are limited to ten attempts per minute per address.
 
 | Method and path | Purpose |
 |---|---|
-| `GET /api/events` | `limit`, `before`, `label`, `hide_unconfirmed` |
+| `GET /api/events` | `limit`, `before`, `after`, `label`, `hide_unconfirmed` |
 | `GET /api/events/count` | events since a timestamp, for the badge |
 | `GET /api/events/{id}/clip`, `/thumb` | the MP4 and the thumbnail |
 | `POST /api/events/{id}/keep` | `{keep}` protects an event from retention |

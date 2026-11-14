@@ -60,7 +60,7 @@ User-facing text uses English sentences as keys: `t("Delete event")`. Spanish li
 
 ## Releases
 
-A tag `vX.Y.Z` runs `.github/workflows/release.yml`: the tests, static musl binaries for x86-64 and ARM64 built with [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild), the firmware image, `SHA256SUMS` over everything, a GitHub release whose notes are the `## X.Y.Z` section of `CHANGELOG.md`, the web installer on GitHub Pages, and the multi-arch image on GHCR built from those same binaries (`Dockerfile`, target `prebuilt`).
+A tag `vX.Y.Z` runs `.github/workflows/release.yml`: lint and the Rust tests (the interface, browser and audit checks run on every push to `main`), static musl binaries for x86-64 and ARM64 built with [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild), the firmware image, `SHA256SUMS` over everything, a GitHub release whose notes are the `## X.Y.Z` section of `CHANGELOG.md`, the web installer on GitHub Pages, and the multi-arch image on GHCR built from those same binaries (`Dockerfile`, target `prebuilt`).
 
 To build the binaries locally:
 
@@ -71,7 +71,7 @@ make release-local                        # dist/camd-linux-amd64, dist/camd-lin
 make platform PLATFORM=linux-arm64        # just one
 ```
 
-The bundled SQLite does not link against musl with its large file wrappers, so the Makefile, the Dockerfile and the workflows build it with `-DSQLITE_DISABLE_LFS` (`CFLAGS_<target>`); on 64-bit targets file offsets are 64 bits anyway. Without zig, a native x86-64 musl build works with `ZIGBUILD="cargo build" CC_x86_64_unknown_linux_musl=musl-gcc make platform PLATFORM=linux-amd64`.
+The bundled SQLite does not link against musl with its large file wrappers, so `.cargo/config.toml` builds it with `-DSQLITE_DISABLE_LFS` (`CFLAGS_<target>`) for both musl targets; on 64-bit targets file offsets are 64 bits anyway. Without zig, a native x86-64 musl build works with `ZIGBUILD="cargo build" CC_x86_64_unknown_linux_musl=musl-gcc make platform PLATFORM=linux-amd64`.
 
 ## Checks against a real camera
 

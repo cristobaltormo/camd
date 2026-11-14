@@ -173,7 +173,7 @@ La detección se ejecuta como mucho cada 0,7 s y solo mientras algo se mueve; el
 | `camd ctl revoke-all` | cierra todas las sesiones |
 | `camd --version` | imprime la versión |
 
-`camd-ctl` se acepta como nombre de `camd ctl`, así que los scripts escritos para 2.x siguen funcionando a través de un enlace. Todos los comandos leen la misma configuración: `CAMD_CONFIG` y las variables `CAMD_*`.
+`camd-ctl` se acepta como nombre de `camd ctl`, así que los scripts que llaman a `camd-ctl` por su nombre siguen funcionando (el instalador y la imagen crean el enlace); un script con la ruta del venv antiguo necesita `camd ctl`. Todos los comandos leen la misma configuración: `CAMD_CONFIG` y las variables `CAMD_*`.
 
 ## Documentación
 

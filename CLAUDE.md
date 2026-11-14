@@ -39,7 +39,7 @@ Self-hosted ESP32-CAM server: live view, motion and object detection, clips, ale
 - The ESP32 only joins 2.4 GHz.
 - The detection model is downloaded on first use; tests never need the network (the detector is faked with `detect::FakeDetector`).
 - NanoDet outputs are identified by shape, and anchors carry `+stride/2`: without it boxes shift half a cell.
-- Static musl builds of the bundled SQLite fail to link on the `*64` file functions: build with `CFLAGS_<target>=-DSQLITE_DISABLE_LFS` (the Makefile, Dockerfile and workflows set it).
+- Static musl builds of the bundled SQLite fail to link on the `*64` file functions: build with `CFLAGS_<target>=-DSQLITE_DISABLE_LFS` (`.cargo/config.toml` sets it for both musl targets).
 - The release profile is fat LTO: linking peaks near 2 GB, and `cargo test --release` gets OOM-killed in a 3 GB machine. Test in the dev profile; `target/` grows by hundreds of MB per test binary, `cargo clean -p camd` frees it.
 - Node 22: `node --test some/dir/` does not find the tests; run `node --test` inside `tests/web`.
 - Chrome on the CI runner is slow to start: `tools/cdp.mjs` waits up to 40 s and passes `--disable-dev-shm-usage`. The runner's apt sometimes hangs: every apt step has retries and a timeout.

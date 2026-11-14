@@ -2,7 +2,7 @@
 
 ## 3.0.0
 
-The server is rewritten in Rust. It does the same job with the same configuration, the same data directory and the same HTTP API, so upgrading is replacing the program, and going back to 2.2 is replacing it again. What changes is what it costs to run: camd is now one static binary of about 29 MB with the web app inside, with no Python, OpenCV or OpenSSL to install. It needs only FFmpeg for clips and, for presence, `ping` and `arping`.
+The server is rewritten in Rust. It does the same job with the same configuration, the same data directory and the same HTTP API, so upgrading is replacing the program, and going back to 2.2 is replacing it again. What changes is what it costs to run: camd is now one static binary of about 28 MB (22 MB on ARM64) with the web app inside, with no Python, OpenCV or OpenSSL to install. It needs only FFmpeg for clips and, for presence, `ping` and `arping`.
 
 Measured on the same machine (a 2 vCPU Debian 13 container) with the same 800x600 stream at 10 fps, 3.0 against 2.2:
 
@@ -49,7 +49,7 @@ Packaging:
 
 - Release files: `camd-linux-amd64` and `camd-linux-arm64` (static, musl), the firmware image, `install.sh`, `camd.service`, `config.example.toml` and `SHA256SUMS`.
 - `install.sh` downloads the binary for the machine, checks it against `SHA256SUMS`, and installs or upgrades in place, backing up the unit, `/etc/camd` and the database first.
-- The systemd unit runs `/usr/local/bin/camd` with the same hardening plus a 512 MB memory cap, `CAP_NET_RAW` for `arping` and a narrower set of address families.
+- The systemd unit runs `/usr/local/bin/camd` with the 2.x hardening and more: a 512 MB memory cap, a 15 s stop timeout, `RestrictAddressFamilies`, `ProtectKernelLogs`, `ProtectClock`, `ProtectHostname`, `RestrictRealtime`, `SystemCallArchitectures=native` and `UMask=0027`; the env file is optional.
 - The Docker image is Alpine with FFmpeg, `ping`, `arping` and time zone data, built from the release binaries, for `linux/amd64` and `linux/arm64`, with the same `camd` user id as before. `docker-compose.yml` now pulls `ghcr.io/cristobaltormo/camd:3` instead of building.
 - CI runs `cargo fmt`, `cargo clippy -D warnings`, `cargo test` with FFmpeg and a Mosquitto broker, `cargo audit` with no ignored advisories, the interface tests, and the browser tests against the real binary and a fake camera.
 - Dependencies: the MQTT client is built in (MQTT 3.1.1 over TCP or rustls: last will, keepalive, QoS 0 retained states, command subscriptions, reconnect every 5 s) instead of `rumqttc`, which pulled an older `rustls-webpki` and the unmaintained `rustls-pemfile`. The RustCrypto crates move to the current generation (`p256` 0.14, `rsa` 0.10, `ed25519-dalek` 3, `sha2` 0.11, `aes-gcm` 0.11, `hkdf` 0.13, `scrypt` 0.12) with a single `digest`, which closes the timing advisories in `crypto-bigint` 0.5 and `rsa` 0.9. 303 crates in `Cargo.lock` instead of 316.

@@ -173,7 +173,7 @@ Detection runs at most every 0.7 s and only while something moves; the model is 
 | `camd ctl revoke-all` | sign everyone out |
 | `camd --version` | print the version |
 
-`camd-ctl` is accepted as a name for `camd ctl`, so scripts written for 2.x keep working through a link. Every command reads the same configuration: `CAMD_CONFIG` and the `CAMD_*` variables.
+`camd-ctl` is accepted as a name for `camd ctl`, so scripts that call `camd-ctl` by name keep working (the installer and the image provide the link); a script with the old venv path needs `camd ctl` instead. Every command reads the same configuration: `CAMD_CONFIG` and the `CAMD_*` variables.
 
 ## Documentation
 

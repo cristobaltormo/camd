@@ -1,9 +1,7 @@
 .git
 .github
 .claude
-.ruff_cache
 target
-server
 firmware
 docs
 tools

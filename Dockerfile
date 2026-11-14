@@ -18,6 +18,7 @@ RUN apk add --no-cache ffmpeg iputils-ping iputils-arping ca-certificates tzdata
  && delgroup ping \
  && addgroup -S -g 999 camd \
  && adduser -S -D -H -u 999 -G camd -h /data -s /sbin/nologin camd \
+ && ln -s camd /usr/local/bin/camd-ctl \
  && mkdir /data \
  && chown camd:camd /data
 ENV CAMD_LISTEN_HOST=0.0.0.0 \

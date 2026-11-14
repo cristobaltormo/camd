@@ -24,6 +24,6 @@
 
 **Why was the server rewritten in Rust for 3.0?** To make it small enough to forget about. The 2.x server needed Python, OpenCV and about 130 to 160 MB of memory; 3.0 is one static binary that uses about 40 MB with the detector loaded and is ready in milliseconds. Everything that is stored and every part of the API stayed the same. The numbers are in the [README](../README.md#resources).
 
-**Can I go back to 2.x after upgrading?** Yes. 3.0 keeps the database schema and the data directory of 2.x, and 2.x reads what 3.0 writes. The installer keeps the old virtualenv and prints the two commands that restore the old unit. See [upgrading from 2.x](install.md#upgrading-from-2x-python).
+**Can I go back to 2.x after upgrading?** Yes. 3.0 keeps the database schema and the data directory of 2.x, and 2.x reads what 3.0 writes. The installer keeps the old virtualenv and prints the commands that restore the old unit. See [upgrading from 2.x](install.md#upgrading-from-2x-python).
 
 **Does it run on a Raspberry Pi?** On any model that runs a 64-bit system (Pi 3 and later), with the `camd-linux-arm64` binary or the Docker image. 32-bit systems are not supported by the release binaries.

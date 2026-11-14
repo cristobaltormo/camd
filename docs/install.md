@@ -43,6 +43,8 @@ sudo cp /var/backups/camd/<date>-before-3.0.0/camd.service /etc/systemd/system/c
 sudo systemctl daemon-reload && sudo systemctl start camd
 ```
 
+With Docker: `docker compose pull && docker compose up -d`; a 2.x compose file with `build: .` needs `image: ghcr.io/cristobaltormo/camd:3` instead. `camd-ctl` still works in the image and on systemd installs by name; a script that calls the old venv path `/opt/camd/venv/bin/camd-ctl` keeps running the 2.x one until it is changed to `camd ctl`.
+
 2.x opens a database written by 3.0. When 3.0 has run for a while, remove the old server with `sudo rm -rf /opt/camd`. Before upgrading, check that no setting in `config.toml` has the wrong type (`retention_days = "14"` instead of `14`, for example): 3.0 refuses to start with a clear message where 2.x accepted it silently.
 
 ## Docker
