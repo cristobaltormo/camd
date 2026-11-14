@@ -30,25 +30,25 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 webpki-roots = "1"
 rustls-native-certs = "0.8"
 rumqttc = { version = "0.25", default-features = false, features = ["use-rustls-no-provider"] }
-scrypt = { version = "0.11", default-features = false }
-sha2 = "0.10"
+scrypt = { version = "0.12", default-features = false }
+sha2 = "0.11"
 subtle = "2"
-getrandom = "0.3"
-base64 = "0.22"
+getrandom = "0.4"
+base64 = "0.23"
 hex = "0.4"
-p256 = { version = "0.13", features = ["ecdsa", "ecdh", "pkcs8", "pem"] }
+p256 = { version = "0.14", features = ["ecdsa", "ecdh", "pkcs8", "pem"] }
 ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
 rsa = { version = "0.9", default-features = false, features = ["std", "sha2"] }
 ciborium = "0.2"
-aes-gcm = "0.10"
-hkdf = "0.12"
+aes-gcm = "0.11"
+hkdf = "0.13"
 zune-jpeg = { version = "0.5", default-features = false, features = ["std", "x86", "neon"] }
-jpeg-encoder = "0.6"
+jpeg-encoder = "0.7"
 tract-onnx = "0.23"
 libc = "0.2"
 
 [build-dependencies]
-sha1 = "0.10"
+sha1 = "0.11"
 regex-lite = "0.1"
 
 [dev-dependencies]
