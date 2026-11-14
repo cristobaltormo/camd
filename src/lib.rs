@@ -1,0 +1,34 @@
+pub mod logx;
+
+pub mod api;
+pub mod app;
+pub mod arming;
+pub mod assets;
+pub mod auth;
+pub mod clock;
+pub mod config;
+pub mod ctl;
+pub mod db;
+pub mod detect;
+pub mod error;
+pub mod events;
+pub mod grabber;
+pub mod imaging;
+pub mod labels;
+pub mod luma;
+pub mod messages;
+pub mod motion;
+pub mod mqtt;
+pub mod notify;
+pub mod photos;
+pub mod prefs;
+pub mod presence;
+pub mod push;
+pub mod runtime;
+pub mod spool;
+pub mod storage;
+pub mod viewers;
+
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const WORKER_THREADS: usize = 2;
+pub const MAX_BLOCKING_THREADS: usize = 32;

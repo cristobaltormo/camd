@@ -2,7 +2,7 @@
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 chrome="${CHROMIUM:-chromium}"
-web="$root/server/camd/web"
+web="$root/web"
 render() {
   local source="$1" size="$2" output="$3"
   local page

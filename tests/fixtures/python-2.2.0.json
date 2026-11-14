@@ -1,0 +1,10 @@
+{
+  "password": "correct horse battery",
+  "session_token": "lkOxnibh5kS8IeSHS8QxcwTy32UcmKErstVwWC7PkP0",
+  "enroll_code": "8a58a8ae",
+  "credential_id": "jl-kuaEJOT46lqFX9ZJbaA",
+  "sign_count": 0,
+  "rp_id": "localhost",
+  "origin": "http://localhost:8180",
+  "credential_private_scalar_hex": "a8a957b98f18e47b17160333f3aad630f24972c0bdf68b9247f2e47158f3e84e"
+}

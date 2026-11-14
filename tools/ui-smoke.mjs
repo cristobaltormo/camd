@@ -38,7 +38,7 @@ await check("shell with four icons", async () => {
   const missing = await js("[...document.querySelectorAll('.tabs .tab')].filter((t) => !t.querySelector('svg')).map((t) => t.textContent)");
   if (missing.length) throw new Error("tabs without icon: " + missing);
 });
-await check("live stream shows frames", async () => { await waitFor("document.querySelector('.badge.live') && !document.querySelector('.badge.live').hidden", "live badge", 25000); await shot("live"); });
+await check("live stream shows frames", async () => { await waitFor("document.querySelector('.tag.live') && !document.querySelector('.tag.live').hidden", "live badge", 25000); await shot("live"); });
 for (const route of ["events", "photos", "settings/alerts", "settings/camera", "settings/captures", "settings/system"]) {
   await check("route " + route, async () => {
     await js(`location.hash = '#/${route}'`);

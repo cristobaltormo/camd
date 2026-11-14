@@ -25,6 +25,8 @@ export async function launch({ port, width = 1280, height = 900, extraArgs = [] 
   chrome.stderr.on("data", (chunk) => { stderr = (stderr + chunk).slice(-4000); });
   let exited = null;
   chrome.on("exit", (code) => { exited = code; });
+  process.on("exit", () => chrome.kill());
+  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => process.exit(130));
 
   let target;
   let lastError = "";
