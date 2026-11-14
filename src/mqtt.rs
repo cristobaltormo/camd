@@ -749,26 +749,25 @@ mod tests {
 
     impl Broker {
         fn start(binary: &str, dir: &std::path::Path, port: u16) -> Broker {
-            let conf = dir.join("mosquitto.conf");
-            std::fs::write(
-                &conf,
-                format!("listener {port} 127.0.0.1\nallow_anonymous true\npersistence false\n"),
-            )
-            .unwrap();
+            let log_path = dir.join(format!("mosquitto-{port}.log"));
+            let log = std::fs::File::create(&log_path).unwrap();
             let child = std::process::Command::new(binary)
-                .arg("-c")
-                .arg(&conf)
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
+                .arg("-p")
+                .arg(port.to_string())
+                .stdout(log.try_clone().unwrap())
+                .stderr(log)
                 .spawn()
                 .unwrap();
-            for _ in 0..100 {
+            for _ in 0..200 {
                 if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
-                    break;
+                    return Broker(child);
                 }
                 std::thread::sleep(Duration::from_millis(50));
             }
-            Broker(child)
+            panic!(
+                "mosquitto did not listen on {port}: {}",
+                std::fs::read_to_string(&log_path).unwrap_or_default()
+            );
         }
     }
 
