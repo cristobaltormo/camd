@@ -688,6 +688,9 @@ impl Runtime {
                 .into_iter()
                 .filter(|d| in_zones(d, &zones) && state.activity.moved_under(&d.bbox, ts))
                 .collect();
+            for d in &found {
+                state.activity.mark_box(&d.bbox, ts);
+            }
             state.last_detections = (ts, found.clone());
             found
         };
@@ -907,7 +910,7 @@ mod tests {
     use super::*;
     use crate::detect::FakeDetector;
     use crate::motion::tests::scene;
-    use crate::motion::{ACTIVITY_COLS, ACTIVITY_ROWS};
+    use crate::motion::{ACTIVITY_COLS, ACTIVITY_ROWS, ACTIVITY_WINDOW_S};
 
     #[derive(Default)]
     pub struct FakeAlerts {
@@ -1246,7 +1249,33 @@ mod tests {
         env.rt
             .on_detections(now, &Bytes::new(), vec![bag.clone()])
             .unwrap();
-        assert_eq!(lock(&env.rt.state).last_detections.1, vec![bag]);
+        assert_eq!(lock(&env.rt.state).last_detections.1, vec![bag.clone()]);
+    }
+
+    #[test]
+    fn someone_seen_where_they_moved_keeps_counting_while_still() {
+        let env = env();
+        let seated = Detection::new("person", 0.9, [0.6, 0.6, 0.1, 0.2]);
+        let mut cells = vec![false; ACTIVITY_COLS * ACTIVITY_ROWS];
+        cells[9 * ACTIVITY_COLS + 12] = true;
+        let start = clock::now() - 60.0;
+        lock(&env.rt.state).activity.mark(start, &cells);
+        let mut t = start;
+        while t < start + 50.0 {
+            env.rt
+                .on_detections(t, &Bytes::new(), vec![seated.clone()])
+                .unwrap();
+            assert_eq!(lock(&env.rt.state).last_detections.1, vec![seated.clone()]);
+            t += 2.5;
+        }
+        env.rt
+            .on_detections(
+                t + 2.0 * ACTIVITY_WINDOW_S,
+                &Bytes::new(),
+                vec![seated.clone()],
+            )
+            .unwrap();
+        assert!(lock(&env.rt.state).last_detections.1.is_empty());
     }
 
     #[test]

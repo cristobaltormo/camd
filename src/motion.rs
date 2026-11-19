@@ -60,6 +60,16 @@ impl ActivityMap {
         }
     }
 
+    pub fn mark_box(&mut self, bbox: &[f64; 4], ts: f64) {
+        let [x, y, w, h] = *bbox;
+        for row in cell_span(y, h, ACTIVITY_ROWS) {
+            for col in cell_span(x, w, ACTIVITY_COLS) {
+                let last = &mut self.last[row * ACTIVITY_COLS + col];
+                *last = last.max(ts);
+            }
+        }
+    }
+
     pub fn moved_under(&self, bbox: &[f64; 4], ts: f64) -> bool {
         let [x, y, w, h] = *bbox;
         let since = ts - ACTIVITY_WINDOW_S;
@@ -552,6 +562,17 @@ pub mod tests {
         assert!(!map.moved_under(&[0.8, 0.8, 0.1, 0.1], 100.0));
         assert!(map.moved_under(&[0.0, 0.0, 1.0, 1.0], 100.0));
         assert!(!ActivityMap::default().moved_under(&[0.0, 0.0, 1.0, 1.0], 0.0));
+    }
+
+    #[test]
+    fn a_marked_box_keeps_its_own_cells_active() {
+        let mut map = ActivityMap::default();
+        let seated = [0.6, 0.6, 0.1, 0.2];
+        map.mark_box(&seated, 100.0);
+        assert!(map.moved_under(&seated, 100.0 + ACTIVITY_WINDOW_S));
+        assert!(!map.moved_under(&[0.1, 0.1, 0.1, 0.1], 100.0));
+        map.mark_box(&seated, 50.0);
+        assert!(map.moved_under(&seated, 100.0 + ACTIVITY_WINDOW_S));
     }
 
     #[test]

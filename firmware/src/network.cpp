@@ -9,6 +9,7 @@
 static const uint32_t PORTAL_AFTER_MS = 2UL * 60UL * 1000UL;
 static const uint32_t RESTART_AFTER_MS = 10UL * 60UL * 1000UL;
 static const uint32_t PORTAL_RETRY_MS = 60UL * 1000UL;
+static const uint32_t RESTART_WITH_GUEST_MS = 30UL * 60UL * 1000UL;
 static const uint8_t DNS_PORT = 53;
 
 static DNSServer dns;
@@ -53,8 +54,10 @@ static void startMdns() {
 
 void networkStartPortal() {
   if (portalActive) return;
-  WiFi.setAutoReconnect(false);
-  WiFi.disconnect();
+  if (WiFi.status() != WL_CONNECTED) {
+    WiFi.setAutoReconnect(false);
+    WiFi.disconnect();
+  }
   WiFi.mode(WIFI_AP_STA);
   scanNetworks();
   WiFi.softAP(portalName().c_str());
@@ -95,7 +98,7 @@ void networkLoop() {
       lastAttempt = millis();
       WiFi.begin(settings.ssid.c_str(), settings.password.c_str());
     }
-    if (!guest && offline > RESTART_AFTER_MS) ESP.restart();
+    if (offline > (guest ? RESTART_WITH_GUEST_MS : RESTART_AFTER_MS)) ESP.restart();
   }
   if (portalActive) dns.processNextRequest();
 }

@@ -1,6 +1,6 @@
 [package]
 name = "camd"
-version = "3.1.0"
+version = "3.1.1"
 edition = "2024"
 license = "MIT"
 description = "Self-hosted camera server for the ESP32-CAM: live view, motion and object detection, clips, alerts"

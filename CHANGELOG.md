@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.1.1
+
+- An object that was accepted keeps its own place active, so someone who walks in and then sits still keeps counting, and keeps the event open, for as long as they are seen. In 3.1.0 a person who barely moved stopped counting 10 seconds after their last big move and the clip ended with them still in the picture. An object that never moved is still never accepted.
+- An object entirely inside an ignored zone does not count, since no motion is measured there (documented; it was already so in 3.1.0).
+- Firmware 1.0.2: while someone is connected to the setup portal the board restarts after 30 minutes offline instead of never, so a phone that rejoins the open setup network by itself cannot keep the camera offline for good. The `portal` console command on a connected camera opens the portal without dropping the wifi, as before 1.0.1.
+
 ## 3.1.0
 
 - An object only counts if something moved where it is. The motion detector now keeps a coarse map (20 by 15 cells) of where the picture changed in the last 10 seconds, and a detection whose box touches none of those cells is dropped before it labels an event, raises an alert, reaches MQTT or the live view. A backpack or a coat that the model sometimes takes for a person no longer turns a cat or a change of light elsewhere into a person event. Someone who walks in and then stays still keeps counting for 10 seconds after the last move, which is longer than the gap between two analysed frames during an event.
