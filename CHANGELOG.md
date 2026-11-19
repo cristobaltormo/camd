@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.0
+
+- An object only counts if something moved where it is. The motion detector now keeps a coarse map (20 by 15 cells) of where the picture changed in the last 10 seconds, and a detection whose box touches none of those cells is dropped before it labels an event, raises an alert, reaches MQTT or the live view. A backpack or a coat that the model sometimes takes for a person no longer turns a cat or a change of light elsewhere into a person event. Someone who walks in and then stays still keeps counting for 10 seconds after the last move, which is longer than the gap between two analysed frames during an event.
+- Firmware 1.0.1: the setup portal can be seen. When the saved network is missing, the board stops retrying it in the background while the portal is open (the retries moved the access point from channel to channel, so phones never listed it); it tries the saved network again once a minute while nobody is connected to the portal, and no longer restarts after 10 minutes offline while someone is.
+
 ## 3.0.0
 
 The server is rewritten in Rust. It does the same job with the same configuration, the same data directory and the same HTTP API, so upgrading is replacing the program, and going back to 2.2 is replacing it again. What changes is what it costs to run: camd is now one static binary of about 28 MB (22 MB on ARM64) with the web app inside, with no Python, OpenCV or OpenSSL to install. It needs only FFmpeg for clips and, for presence, `ping` and `arping`.

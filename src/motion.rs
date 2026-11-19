@@ -8,6 +8,10 @@ pub const BACKGROUND_RATE_DURING_MOTION: f32 = 0.01;
 pub const WARMUP_RATE: f32 = 0.2;
 pub const DILATE_ITERATIONS: u32 = 2;
 pub const BLUR_KERNEL: usize = 21;
+pub const ACTIVITY_COLS: usize = 20;
+pub const ACTIVITY_ROWS: usize = 15;
+pub const ACTIVITY_CELL_FRACTION: f64 = 0.05;
+pub const ACTIVITY_WINDOW_S: f64 = 10.0;
 
 impl MotionSettings {
     pub fn pixel_threshold(&self) -> i64 {
@@ -30,6 +34,56 @@ pub const QUIET: MotionResult = MotionResult {
     score: 0.0,
 };
 
+pub struct ActivityMap {
+    last: Vec<f64>,
+}
+
+impl Default for ActivityMap {
+    fn default() -> ActivityMap {
+        ActivityMap {
+            last: vec![f64::NEG_INFINITY; ACTIVITY_COLS * ACTIVITY_ROWS],
+        }
+    }
+}
+
+fn cell_span(start: f64, length: f64, cells: usize) -> std::ops::RangeInclusive<usize> {
+    let index = |v: f64| ((v.clamp(0.0, 1.0) * cells as f64) as usize).min(cells - 1);
+    index(start)..=index(start + length)
+}
+
+impl ActivityMap {
+    pub fn mark(&mut self, ts: f64, cells: &[bool]) {
+        for (last, moved) in self.last.iter_mut().zip(cells) {
+            if *moved {
+                *last = ts;
+            }
+        }
+    }
+
+    pub fn moved_under(&self, bbox: &[f64; 4], ts: f64) -> bool {
+        let [x, y, w, h] = *bbox;
+        let since = ts - ACTIVITY_WINDOW_S;
+        cell_span(y, h, ACTIVITY_ROWS).any(|row| {
+            cell_span(x, w, ACTIVITY_COLS).any(|col| self.last[row * ACTIVITY_COLS + col] >= since)
+        })
+    }
+}
+
+pub fn moving_cells(changed: &[bool], width: usize, height: usize, cells: &mut Vec<bool>) {
+    let mut counts = vec![0usize; ACTIVITY_COLS * ACTIVITY_ROWS];
+    for (row, line) in changed.chunks(width.max(1)).take(height).enumerate() {
+        let base = row * ACTIVITY_ROWS / height * ACTIVITY_COLS;
+        for (col, moved) in line.iter().enumerate() {
+            if *moved {
+                counts[base + col * ACTIVITY_COLS / width] += 1;
+            }
+        }
+    }
+    let needed = (width * height) as f64 / counts.len() as f64 * ACTIVITY_CELL_FRACTION;
+    cells.clear();
+    cells.extend(counts.iter().map(|n| *n as f64 >= needed.max(1.0)));
+}
+
 #[derive(Default)]
 struct Scratch {
     decoded: Vec<u8>,
@@ -49,6 +103,7 @@ pub struct MotionDetector {
     seen: u32,
     mask: Option<Vec<bool>>,
     mask_key: Option<(usize, usize)>,
+    cells: Vec<bool>,
 }
 
 impl MotionDetector {
@@ -63,7 +118,12 @@ impl MotionDetector {
             seen: 0,
             mask: None,
             mask_key: None,
+            cells: Vec::new(),
         }
+    }
+
+    pub fn moving_cells(&self) -> &[bool] {
+        &self.cells
     }
 
     pub fn update_settings(&mut self, settings: MotionSettings) {
@@ -131,6 +191,7 @@ impl MotionDetector {
     }
 
     pub fn process(&mut self, jpeg: &[u8]) -> MotionResult {
+        self.cells.clear();
         let buffer = std::mem::take(&mut self.scratch.decoded);
         let Some(gray) = imaging::decode_gray_half_into(jpeg, buffer) else {
             return QUIET;
@@ -141,6 +202,7 @@ impl MotionDetector {
     }
 
     pub fn process_gray(&mut self, gray: &Image) -> MotionResult {
+        self.cells.clear();
         let mut blurred = std::mem::take(&mut self.scratch.blurred);
         imaging::gaussian_blur_into(gray, &self.kernel, &mut self.scratch.blur, &mut blurred);
         self.scratch.blurred = blurred;
@@ -188,8 +250,11 @@ impl MotionDetector {
             let grown = dilate(&changed, width, height, DILATE_ITERATIONS as usize);
             largest_contour_area(&grown, width, height) / total as f64
         };
-        self.scratch.changed = changed;
         let motion = score >= self.settings.min_area_fraction();
+        if motion {
+            moving_cells(&changed, width, height, &mut self.cells);
+        }
+        self.scratch.changed = changed;
         self.accumulate(if motion {
             BACKGROUND_RATE_DURING_MOTION
         } else {
@@ -460,6 +525,50 @@ pub mod tests {
             ignore_rects: ignore,
             alert_rects: Vec::new(),
         }
+    }
+
+    #[test]
+    fn moving_cells_follow_what_moved() {
+        let mut detector = MotionDetector::new(settings(5, Vec::new()));
+        warmed(&mut detector, 90);
+        assert!(detector.moving_cells().is_empty());
+        assert!(detector.process(&scene(0, 90, true)).motion);
+        let cells = detector.moving_cells();
+        assert_eq!(cells.len(), ACTIVITY_COLS * ACTIVITY_ROWS);
+        assert!(cells[9 * ACTIVITY_COLS + 10]);
+        assert!(!cells[0] && !cells[14 * ACTIVITY_COLS + 1] && !cells[2 * ACTIVITY_COLS + 18]);
+    }
+
+    #[test]
+    fn activity_lasts_for_the_window_and_only_where_it_happened() {
+        let mut map = ActivityMap::default();
+        let mut cells = vec![false; ACTIVITY_COLS * ACTIVITY_ROWS];
+        cells[3 * ACTIVITY_COLS + 2] = true;
+        map.mark(100.0, &cells);
+        let near = [0.1, 0.2, 0.05, 0.05];
+        assert!(map.moved_under(&near, 100.0));
+        assert!(map.moved_under(&near, 100.0 + ACTIVITY_WINDOW_S));
+        assert!(!map.moved_under(&near, 100.1 + ACTIVITY_WINDOW_S));
+        assert!(!map.moved_under(&[0.8, 0.8, 0.1, 0.1], 100.0));
+        assert!(map.moved_under(&[0.0, 0.0, 1.0, 1.0], 100.0));
+        assert!(!ActivityMap::default().moved_under(&[0.0, 0.0, 1.0, 1.0], 0.0));
+    }
+
+    #[test]
+    fn moving_cells_need_a_share_of_the_cell() {
+        let (width, height) = (400, 300);
+        let mut changed = vec![false; width * height];
+        changed[0] = true;
+        for y in 100..120 {
+            for x in 200..220 {
+                changed[y * width + x] = true;
+            }
+        }
+        let mut cells = Vec::new();
+        moving_cells(&changed, width, height, &mut cells);
+        assert!(!cells[0]);
+        assert!(cells[5 * ACTIVITY_COLS + 10]);
+        assert_eq!(cells.iter().filter(|c| **c).count(), 1);
     }
 
     #[test]

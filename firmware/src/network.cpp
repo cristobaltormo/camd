@@ -8,12 +8,14 @@
 
 static const uint32_t PORTAL_AFTER_MS = 2UL * 60UL * 1000UL;
 static const uint32_t RESTART_AFTER_MS = 10UL * 60UL * 1000UL;
+static const uint32_t PORTAL_RETRY_MS = 60UL * 1000UL;
 static const uint8_t DNS_PORT = 53;
 
 static DNSServer dns;
 static bool portalActive = false;
 static bool mdnsStarted = false;
 static uint32_t lastConnected = 0;
+static uint32_t lastAttempt = 0;
 static String scanResult = "[]";
 
 static String portalName() { return "camd-setup-" + settings.hostname.substring(settings.hostname.length() - 4); }
@@ -39,6 +41,7 @@ static void stopPortal() {
   dns.stop();
   WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
   portalActive = false;
 }
 
@@ -50,11 +53,14 @@ static void startMdns() {
 
 void networkStartPortal() {
   if (portalActive) return;
+  WiFi.setAutoReconnect(false);
+  WiFi.disconnect();
   WiFi.mode(WIFI_AP_STA);
   scanNetworks();
   WiFi.softAP(portalName().c_str());
   dns.start(DNS_PORT, "*", WiFi.softAPIP());
   portalActive = true;
+  lastAttempt = millis();
   Serial.printf("setup portal: join wifi '%s' and open http://%s\n", portalName().c_str(), WiFi.softAPIP().toString().c_str());
 }
 
@@ -84,7 +90,12 @@ void networkLoop() {
   } else if (settings.wifiConfigured()) {
     uint32_t offline = millis() - lastConnected;
     if (!portalActive && offline > PORTAL_AFTER_MS) networkStartPortal();
-    if (offline > RESTART_AFTER_MS) ESP.restart();
+    bool guest = portalActive && WiFi.softAPgetStationNum() > 0;
+    if (portalActive && !guest && millis() - lastAttempt > PORTAL_RETRY_MS) {
+      lastAttempt = millis();
+      WiFi.begin(settings.ssid.c_str(), settings.password.c_str());
+    }
+    if (!guest && offline > RESTART_AFTER_MS) ESP.restart();
   }
   if (portalActive) dns.processNextRequest();
 }

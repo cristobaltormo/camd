@@ -17,7 +17,7 @@ use crate::error::Result;
 use crate::events::{FLUSH_TIMEOUT_S, Recorder, RecorderHooks};
 use crate::grabber::{CameraClient, FrameSink, Grabber};
 use crate::messages::{label_names, translate};
-use crate::motion::MotionDetector;
+use crate::motion::{ActivityMap, MotionDetector};
 use crate::mqtt::{Commands, Mqtt};
 use crate::notify::Alerts;
 use crate::photos::{PhotoError, Photos};
@@ -77,6 +77,7 @@ pub enum ClipError {
 
 struct State {
     motion_now: bool,
+    activity: ActivityMap,
     last_detections: (f64, Vec<Detection>),
     camera_info: Option<Value>,
     started_at: f64,
@@ -206,6 +207,7 @@ impl Runtime {
             grabber: Arc::new(Grabber::new(camera)),
             state: Mutex::new(State {
                 motion_now: false,
+                activity: ActivityMap::default(),
                 last_detections: (0.0, Vec::new()),
                 camera_info: None,
                 started_at: now,
@@ -634,8 +636,21 @@ impl Runtime {
         if self.grabber.standby() || !self.grabber.enabled() || self.grabber.halted() {
             return;
         }
-        let result = lock(&self.motion).process(jpeg);
-        lock(&self.state).motion_now = result.motion;
+        let (result, cells) = {
+            let mut motion = lock(&self.motion);
+            let result = motion.process(jpeg);
+            (
+                result,
+                result.motion.then(|| motion.moving_cells().to_vec()),
+            )
+        };
+        {
+            let mut state = lock(&self.state);
+            state.motion_now = result.motion;
+            if let Some(cells) = cells {
+                state.activity.mark(ts, &cells);
+            }
+        }
         self.request_analysis(ts, jpeg, result.motion);
         let armed = self.armed();
         if let Err(e) = self
@@ -667,8 +682,15 @@ impl Runtime {
 
     fn on_detections(&self, ts: f64, jpeg: &Bytes, found: Vec<Detection>) -> Result<()> {
         let zones = lock(&self.motion).settings.alert_rects.clone();
-        let found: Vec<Detection> = found.into_iter().filter(|d| in_zones(d, &zones)).collect();
-        lock(&self.state).last_detections = (ts, found.clone());
+        let found: Vec<Detection> = {
+            let mut state = lock(&self.state);
+            let found: Vec<Detection> = found
+                .into_iter()
+                .filter(|d| in_zones(d, &zones) && state.activity.moved_under(&d.bbox, ts))
+                .collect();
+            state.last_detections = (ts, found.clone());
+            found
+        };
         self.mqtt
             .publish("object", if found.is_empty() { "OFF" } else { "ON" });
         self.recorder.observe(ts, jpeg, &found)
@@ -885,6 +907,7 @@ mod tests {
     use super::*;
     use crate::detect::FakeDetector;
     use crate::motion::tests::scene;
+    use crate::motion::{ACTIVITY_COLS, ACTIVITY_ROWS};
 
     #[derive(Default)]
     pub struct FakeAlerts {
@@ -1192,10 +1215,38 @@ mod tests {
         });
         let inside = Detection::new("person", 0.9, [0.1, 0.1, 0.2, 0.2]);
         let outside = Detection::new("person", 0.9, [0.7, 0.7, 0.2, 0.2]);
+        let now = clock::now();
+        lock(&env.rt.state)
+            .activity
+            .mark(now, &[true; ACTIVITY_COLS * ACTIVITY_ROWS]);
         env.rt
-            .on_detections(clock::now(), &Bytes::new(), vec![inside.clone(), outside])
+            .on_detections(now, &Bytes::new(), vec![inside.clone(), outside])
             .unwrap();
         assert_eq!(lock(&env.rt.state).last_detections.1, vec![inside]);
+    }
+
+    #[test]
+    fn detections_where_nothing_moved_are_ignored() {
+        let env = env();
+        let bag = Detection::new("person", 0.9, [0.6, 0.7, 0.2, 0.3]);
+        let now = clock::now();
+        env.rt
+            .on_detections(now, &Bytes::new(), vec![bag.clone()])
+            .unwrap();
+        assert!(lock(&env.rt.state).last_detections.1.is_empty());
+        let mut cells = vec![false; ACTIVITY_COLS * ACTIVITY_ROWS];
+        cells[ACTIVITY_COLS] = true;
+        lock(&env.rt.state).activity.mark(now, &cells);
+        env.rt
+            .on_detections(now, &Bytes::new(), vec![bag.clone()])
+            .unwrap();
+        assert!(lock(&env.rt.state).last_detections.1.is_empty());
+        cells[13 * ACTIVITY_COLS + 14] = true;
+        lock(&env.rt.state).activity.mark(now, &cells);
+        env.rt
+            .on_detections(now, &Bytes::new(), vec![bag.clone()])
+            .unwrap();
+        assert_eq!(lock(&env.rt.state).last_detections.1, vec![bag]);
     }
 
     #[test]

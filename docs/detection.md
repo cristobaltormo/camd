@@ -13,7 +13,7 @@ Motion needs three consecutive frames before an event starts. Zones you draw in 
 
 ## 2. Objects
 
-While there is motion (and every few seconds while an event is open), a frame is sent to a small neural network. NanoDet-Plus-m comes from the [OpenCV Zoo](https://github.com/opencv/opencv_zoo), is 3.8 MB, and runs inside the server with [tract](https://github.com/sonos/tract), a pure Rust inference engine, so there is no extra runtime to install. The model is loaded the first time it is needed and dropped from memory when detection is turned off. The file is downloaded the first time it is needed and its SHA-256 is checked. It recognises the 80 COCO classes; you choose which ones count (default: person, cat, dog).
+While there is motion (and every few seconds while an event is open), a frame is sent to a small neural network. NanoDet-Plus-m comes from the [OpenCV Zoo](https://github.com/opencv/opencv_zoo), is 3.8 MB, and runs inside the server with [tract](https://github.com/sonos/tract), a pure Rust inference engine, so there is no extra runtime to install. The model is loaded the first time it is needed and dropped from memory when detection is turned off. The file is downloaded the first time it is needed and its SHA-256 is checked. It recognises the 80 COCO classes; you choose which ones count (default: person, cat, dog). A detection only counts where something moved in the last 10 seconds: an object that never moves, such as a bag the model sometimes takes for a person, does not label an event even when the motion that started it happened elsewhere.
 
 Only one frame is analysed at a time and frames that arrive meanwhile are skipped, so a slow machine falls behind gracefully instead of piling up work.
 
