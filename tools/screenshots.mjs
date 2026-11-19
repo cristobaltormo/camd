@@ -6,7 +6,7 @@ const BASE = process.env.BASE || "http://127.0.0.1:18499";
 const OUT = process.env.OUT || "docs/images";
 const COOKIE = process.env.COOKIE;
 mkdirSync(OUT, { recursive: true });
-const { send, js, close } = await launch({ port: 9341 });
+const { send, js, call, close } = await launch({ port: 9341 });
 await send("Network.enable");
 if (COOKIE) await send("Network.setCookie", { name: "cam_session", value: COOKIE, url: BASE, httpOnly: true });
 const get = (path) => fetch(BASE + path, { headers: COOKIE ? { cookie: `cam_session=${COOKIE}` } : {} }).then((r) => r.json());
@@ -49,7 +49,13 @@ for (const [name, route, metrics, theme, mode, ready] of extra.length ? extra : 
   await send("Emulation.setDeviceMetricsOverride", { width: metrics.width, height: metrics.height, deviceScaleFactor: metrics.scale, mobile: metrics.mobile });
   await send("Page.navigate", { url: BASE + "/" });
   await sleep(600);
-  await js(`localStorage.setItem('cam.theme', '${theme}'); localStorage.setItem('cam.language', 'en'); localStorage.setItem('cam.eventsView', JSON.stringify('${mode || "list"}')); location.hash = '#/${route}'; location.reload()`);
+  await call((t, view, r) => {
+    localStorage.setItem("cam.theme", t);
+    localStorage.setItem("cam.language", "en");
+    localStorage.setItem("cam.eventsView", JSON.stringify(view));
+    location.hash = "#/" + r;
+  }, theme, mode || "list", route);
+  await js("location.reload()");
   await sleep(2500);
   if (ready && !(await waitFor(ready, 40000))) console.log("not ready, captured anyway:", name);
   await sleep(ready === boxes ? 0 : 300);

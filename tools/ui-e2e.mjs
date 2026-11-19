@@ -5,7 +5,7 @@ const problems = [];
 
 const COOKIE = process.env.COOKIE;
 const browser = await launch({ port: 9333 });
-const { send, js } = browser;
+const { send, js, call } = browser;
 await send("Network.enable");
 if (COOKIE) await send("Network.setCookie", { name: "cam_session", value: COOKIE, url: BASE, httpOnly: true });
 const request = (path, opts = {}) => fetch(BASE + path, { ...opts, headers: { origin: BASE, ...(COOKIE ? { cookie: `cam_session=${COOKIE}` } : {}), ...(opts.body ? { "content-type": "application/json" } : {}) } });
@@ -27,15 +27,15 @@ const waitFor = async (expression, label, ms = 8000) => {
   throw new Error("timeout waiting for: " + label);
 };
 const goto = async (hash) => { await send("Page.navigate", { url: `${BASE}/#${hash}` }); await sleep(300); await js("location.reload()").catch(() => {}); await sleep(500); };
-const click = (selector) => js(`document.querySelector(${JSON.stringify(selector)}).click()`);
-const clickText = (selector, text) => js(`[...document.querySelectorAll(${JSON.stringify(selector)})].find((b) => b.textContent.includes(${JSON.stringify(text)})).click()`);
+const click = (selector) => call((s) => document.querySelector(s).click(), selector);
+const clickText = (selector, text) => call((s, t) => [...document.querySelectorAll(s)].find((b) => b.textContent.includes(t)).click(), selector, text);
 const serverStatus = () => get("/api/status");
 const streaming = "document.querySelector('.tag.live') && !document.querySelector('.tag.live').hidden";
 const flipPrivacy = async () => {
   await waitFor("!document.querySelector('input[aria-label=\"Privacy\"]').disabled", "privacy switch ready");
   await click('input[aria-label="Privacy"]');
 };
-const count = (selector) => js(`document.querySelectorAll(${JSON.stringify(selector)}).length`);
+const count = (selector) => call((s) => document.querySelectorAll(s).length, selector);
 
 const tests = {
   async "live view starts streaming"() {
@@ -133,7 +133,7 @@ const tests = {
     await goto("/events");
     await waitFor("document.querySelectorAll('.timeline .mark').length >= 1", "marks on the timeline");
     const done = (await doneEvents()).map((e) => e.id);
-    await js(`[...document.querySelectorAll('.timeline .mark')].find((m) => ${JSON.stringify(done)}.includes(Number(m.dataset.id))).click()`);
+    await call((ids) => [...document.querySelectorAll('.timeline .mark')].find((m) => ids.includes(Number(m.dataset.id))).click(), done);
     await waitFor("document.querySelector('.sheet')", "player from the timeline");
     await goto("/events");
     await js("localStorage.removeItem('cam.eventsView')");
@@ -202,7 +202,7 @@ const tests = {
     await goto("/live");
     await waitFor("document.querySelectorAll('.today .event').length >= 1 && document.querySelectorAll('.today .timeline .mark').length >= document.querySelectorAll('.today .event').length", "today rows and marks");
     const done = (await doneEvents()).map((e) => e.id);
-    await js(`[...document.querySelectorAll('.today .event')].find((e) => ${JSON.stringify(done)}.includes(Number(e.dataset.id))).click()`);
+    await call((ids) => [...document.querySelectorAll('.today .event')].find((e) => ids.includes(Number(e.dataset.id))).click(), done);
     await waitFor("location.hash.startsWith('#/events/') && document.querySelector('.sheet')", "event opened from live");
   },
   async "settings on a phone start with the list of sections"() {

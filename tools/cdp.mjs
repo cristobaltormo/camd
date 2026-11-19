@@ -62,6 +62,18 @@ export async function launch({ port, width = 1280, height = 900, extraArgs = [] 
     if (reply.result.exceptionDetails) throw new Error(reply.result.exceptionDetails.exception?.description || "evaluate failed");
     return reply.result.result.value;
   };
+  const call = async (fn, ...args) => {
+    const global = await send("Runtime.evaluate", { expression: "globalThis" });
+    const reply = await send("Runtime.callFunctionOn", {
+      functionDeclaration: fn.toString(),
+      objectId: global.result.result.objectId,
+      arguments: args.map((value) => ({ value })),
+      returnByValue: true,
+      awaitPromise: true,
+    });
+    if (reply.result.exceptionDetails) throw new Error(reply.result.exceptionDetails.exception?.description || "call failed");
+    return reply.result.result.value;
+  };
   const close = async () => {
     ws.close();
     chrome.kill();
@@ -70,5 +82,5 @@ export async function launch({ port, width = 1280, height = 900, extraArgs = [] 
   };
   await send("Runtime.enable");
   await send("Page.enable");
-  return { send, js, close, onEvent: (fn) => listeners.push(fn) };
+  return { send, js, call, close, onEvent: (fn) => listeners.push(fn) };
 }
