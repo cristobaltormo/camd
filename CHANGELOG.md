@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.2
+
+- Presence also listens. A phone that keeps its wifi asleep ignores ping and ARP for minutes, so a phone that was at home could count as away and camd would arm and record. camd now also watches the network for any frame sent by the addresses in `presence_devices` (the IPv4 and ARP traffic a phone emits by itself when it wakes up: mDNS, SSDP, ARP) and counts each one as seen. Probing every 30 seconds stays as it was. The listener is a packet socket with a kernel filter that passes only those senders, so it costs nothing per frame of the camera stream. It needs `CAP_NET_RAW`, which `arping` already needs and the systemd unit already grants; without it camd logs a warning and keeps probing only. The configuration keys, the HTTP API and the data directory do not change.
+- Presence tests cover the frame parser, the kernel filter and a real packet socket on the loopback interface (it is skipped when the process lacks `CAP_NET_RAW`).
+
 ## 3.1.1
 
 - An object that was accepted keeps its own place active, so someone who walks in and then sits still keeps counting, and keeps the event open, for as long as they are seen. In 3.1.0 a person who barely moved stopped counting 10 seconds after their last big move and the clip ended with them still in the picture. An object that never moved is still never accepted.

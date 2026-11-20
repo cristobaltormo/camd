@@ -32,7 +32,7 @@ Keys marked `(live)` can also be changed from the app (Settings). A value saved 
 | `mqtt_topic` | `"camd"` | Topic prefix for state and commands. |
 | `mqtt_discovery` | `true` | Announce the entities to Home Assistant automatically. |
 | `presence_devices` | `[]` | IP addresses of phones that mean someone is home. Empty means manual arming only. |
-| `presence_grace_s` (live) | `300.0` | Seconds without an answer before a phone counts as away. |
+| `presence_grace_s` (live) | `300.0` | Seconds without an answer or a frame of its own before a phone counts as away. |
 | `retention_days` (live) | `14` | Days to keep events (protected ones are never deleted). |
 | `max_disk_gb` (live) | `6.0` | Space cap for events. The oldest go first. |
 | `pre_roll_s` (live) | `3.0` | Seconds recorded before motion starts. |

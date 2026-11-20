@@ -51,7 +51,8 @@ With several cameras the service builds one runtime per camera (own database, gr
 | `detect.rs`, `labels.rs` | NanoDet with tract, model download and checksum, worker thread, COCO names |
 | `events.rs`, `spool.rs` | event lifecycle, pre-roll, on-disk frame spool, FFmpeg encoding |
 | `photos.rs` | stills and their thumbnails |
-| `arming.rs`, `presence.rs` | auto, armed and disarmed modes, snooze, privacy; phone presence by ping and ARP |
+| `arming.rs`, `presence.rs` | auto, armed and disarmed modes, snooze, privacy; phone presence by ping and ARP, plus passive listening for the phone's own frames |
+| `sniff.rs` | packet socket with a kernel filter that passes only IPv4 and ARP frames sent by `presence_devices` |
 | `viewers.rs` | live fan-out and per-viewer back-pressure |
 | `notify.rs`, `push.rs`, `mqtt.rs` (`mqtt/`), `messages.rs` | alert channels, Web Push encryption and VAPID, Home Assistant discovery and the built-in MQTT 3.1.1 client, alert texts |
 | `auth/` | passkeys (WebAuthn), password (scrypt), sessions, rate limits |

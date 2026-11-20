@@ -130,7 +130,23 @@ impl Presence {
         self.wake.notify_all();
     }
 
+    pub fn is_halted(&self) -> bool {
+        self.state().halted
+    }
+
     pub fn start(self: &Arc<Self>) -> std::io::Result<JoinHandle<()>> {
+        match crate::sniff::start(self) {
+            Ok(true) => crate::info!(
+                "camd.presence",
+                "listening passively for {:?}",
+                self.devices
+            ),
+            Ok(false) => {}
+            Err(e) => crate::warning!(
+                "camd.presence",
+                "passive listening unavailable, probing only: {e}"
+            ),
+        }
         let me = Arc::clone(self);
         std::thread::Builder::new()
             .name("presence".into())

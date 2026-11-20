@@ -40,7 +40,7 @@ Start with the log: `journalctl -u camd -n 100` or `docker compose logs --tail 1
 
 **The installer stops with "checksum does not match".** The download was cut or altered. Run it again; if it keeps failing, download the binary and `SHA256SUMS` by hand from the release page and compare.
 
-**Auto mode never records when I am away.** Presence needs the IP address of your phone in `presence_devices`, with a fixed address reserved in the router. Phones sleep their wifi; there is a grace period (`presence_grace_s`) before the phone counts as away. In Docker, `arping` only sees the container's own network: use `network_mode: host` if `ping` alone is not reliable for your phone.
+**Auto mode never records when I am away.** Presence needs the IP address of your phone in `presence_devices`, with a fixed address reserved in the router. Phones sleep their wifi and stop answering ping and ARP for minutes, so camd also listens for any frame the phone sends by itself (needs `CAP_NET_RAW`; the log says "listening passively" at start, or "passive listening unavailable" if it cannot), and there is a grace period (`presence_grace_s`) before the phone counts as away. In Docker, `arping` only sees the container's own network: use `network_mode: host` if `ping` alone is not reliable for your phone.
 
 ## The app
 

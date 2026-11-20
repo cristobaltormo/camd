@@ -25,6 +25,7 @@ pub mod prefs;
 pub mod presence;
 pub mod push;
 pub mod runtime;
+pub mod sniff;
 pub mod spool;
 pub mod storage;
 pub mod viewers;

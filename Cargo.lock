@@ -208,7 +208,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "camd"
-version = "3.1.1"
+version = "3.1.2"
 dependencies = [
  "aes-gcm",
  "axum",

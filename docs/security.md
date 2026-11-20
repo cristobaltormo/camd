@@ -11,7 +11,7 @@ camd is meant to guard a private space, so the defaults are strict.
 | Sessions | Random tokens stored hashed, 30 days, revocable one by one or all at once. Cookies are `HttpOnly`, `SameSite=Strict` and `Secure` behind HTTPS. |
 | Requests | Writes must come from the same origin (CSRF). A strict content security policy forbids inline scripts and styles. |
 | Files | Clips and photos are served only from inside the data directory. |
-| Process | A dedicated user, a hardened systemd unit (`ProtectSystem=strict`, no new privileges, a syscall filter, only `CAP_NET_RAW` for `arping`, a 512 MB memory cap) or a non-root container. |
+| Process | A dedicated user, a hardened systemd unit (`ProtectSystem=strict`, no new privileges, a syscall filter, only `CAP_NET_RAW` for `arping` and for the presence listener, which sees only frames sent by the configured phones, a 512 MB memory cap) or a non-root container. |
 | Input | Request bodies are limited to 256 KiB. Passkey attestations are parsed by a small verifier that accepts only `none` and `packed` attestation and ES256, EdDSA or RS256 keys. A damaged frame from the camera is dropped without stopping anything. |
 | Supply chain | One static binary with no OpenSSL and no interpreter. Every release lists the SHA-256 of each file in `SHA256SUMS` and the installer refuses a file that does not match. The detection model is checked against a fixed SHA-256 before it is used. CI runs `cargo audit` on every change and fails on any advisory; none is ignored. The MQTT client is part of camd, so TLS everywhere goes through the same rustls with ring. |
 
